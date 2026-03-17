@@ -121,8 +121,8 @@ Namespace Utils
         Public Shared Sub WriteManifestBlock(projectFilePath As String, newManifest As String)
             Dim content = File.ReadAllText(projectFilePath)
             Dim pattern = "(#Region\s+Manifest Editor.*?)(#End Region)"
-            Dim replacement = $"#Region  Manifest Editor{Environment.NewLine}{newManifest}{Environment.NewLine}#End Region"
-            Dim newContent = Regex.Replace(content, pattern, replacement,
+            Dim newContent = Regex.Replace(content, pattern,
+                Function(m) $"#Region  Manifest Editor{Environment.NewLine}{newManifest}{Environment.NewLine}#End Region",
                 RegexOptions.Singleline Or RegexOptions.IgnoreCase)
             If newContent = content Then
                 ' No manifest region found — append at end of file

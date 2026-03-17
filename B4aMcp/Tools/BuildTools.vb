@@ -51,6 +51,7 @@ Namespace Tools
                 Dim psi As New ProcessStartInfo() With {
                     .FileName = builderPath,
                     .Arguments = args,
+                    .WorkingDirectory = baseFolder,
                     .RedirectStandardOutput = True,
                     .RedirectStandardError = True,
                     .UseShellExecute = False,

@@ -28,8 +28,12 @@ Namespace Utils
                 SaveStored()
             Else
                 Dim json = File.ReadAllText(_configPath)
-                Dim parsed = JsonConvert.DeserializeObject(Of McpConfig)(json)
-                _stored = If(parsed IsNot Nothing, parsed, New McpConfig())
+                Try
+                    Dim parsed = JsonConvert.DeserializeObject(Of McpConfig)(json)
+                    _stored = If(parsed IsNot Nothing, parsed, New McpConfig())
+                Catch ex As Newtonsoft.Json.JsonException
+                    _stored = New McpConfig()
+                End Try
             End If
         End Sub
 

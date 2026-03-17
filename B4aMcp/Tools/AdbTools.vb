@@ -48,7 +48,8 @@ Namespace Tools
 
                 Dim allLines = output.ToString().Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
                 Dim lastLines = allLines.TakeLast(lines).ToArray()
-                Return $"[{lastLines.Length} lines]{Environment.NewLine}{String.Join(Environment.NewLine, lastLines)}"
+                Dim prefix = If(allLines.Length > lines, $"[showing last {lines} of {allLines.Length} lines]", $"[{lastLines.Length} lines]")
+                Return $"{prefix}{Environment.NewLine}{String.Join(Environment.NewLine, lastLines)}"
             Catch ex As Exception
                 Return $"Error: {ex.Message}"
             End Try

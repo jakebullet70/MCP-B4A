@@ -63,7 +63,7 @@ Exposes 20 tools for compiling projects, reading/modifying layouts, exploring li
 
 | Tool | Description |
 |------|-------------|
-| `b4a_get_logcat` | Returns logcat output filtered by the B4A tag |
+| `b4a_get_logcat` | Returns logcat output filtered by the B4A tag. Shows `[showing last N of M lines]` prefix when output is truncated. |
 | `b4a_list_devices` | Lists connected ADB devices |
 
 ---
@@ -143,6 +143,16 @@ EditText controls in layout JSON require specific properties that differ from ot
 > **`inputType` values must be string constants, NOT integers.** B4A uses Java reflection (`getField("INPUT_TYPE_" + value)`) internally, so numeric values like `1` or `129` will crash at runtime with `NoSuchFieldException`.
 
 `b4a_write_layout` automatically injects missing `password` and `singleLine` with safe defaults, and converts numeric `inputType` values to their named equivalents when possible. Warnings are included in the response.
+
+---
+
+## Notable Implementation Details
+
+- **`b4a_build` WorkingDirectory**: `B4ABuilder.exe` is invoked with `WorkingDirectory = baseFolder`. Without this, the builder cannot locate the `.b4a` file even when `-BaseFolder` is passed, because it resolves the project filename against the current working directory of the calling process.
+
+- **Manifest write safety**: `b4a_write_manifest` uses a `MatchEvaluator` lambda instead of a string replacement to prevent `Regex.Replace` from interpreting `$0`/`\1`-style backreferences in the manifest content. A `.bak` backup is always written before modifying the file.
+
+- **Config resilience**: If `%APPDATA%\mcp-b4a\config.json` is malformed, the server falls back to an empty config and auto-detects paths from `b4xV5.ini` rather than crashing at startup.
 
 ---
 
