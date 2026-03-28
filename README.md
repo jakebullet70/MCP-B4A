@@ -5,7 +5,7 @@
 
 Bridges [Claude Code](https://claude.ai/claude-code) (and any MCP-compatible client) with the [B4A](https://www.b4x.com/b4a.html) (Basic4Android) ecosystem.
 
-Exposes 29 tools for compiling projects, reading/modifying layouts, exploring libraries, deploying APKs, debugging via ADB, doing live visual UI verification directly on the device, and cleaning up sprite PNG artifacts — all without leaving your AI coding assistant.
+Exposes 31 tools for compiling projects, reading/editing source modules, reading/modifying layouts, exploring libraries, deploying APKs, debugging via ADB, doing live visual UI verification directly on the device, and cleaning up sprite PNG artifacts — all without leaving your AI coding assistant.
 
 ---
 
@@ -52,6 +52,13 @@ Exposes 29 tools for compiling projects, reading/modifying layouts, exploring li
 | `b4a_list_libraries` | Lists available B4A libraries with version info |
 | `b4a_get_library_docs` | Returns formatted method/property/event documentation for a library |
 | `b4a_search_library` | Searches across all library documentation |
+
+### Source Modules
+
+| Tool | Description |
+|------|-------------|
+| `b4a_read_bas` | Reads a `.bas` source module and returns its content with line numbers |
+| `b4a_edit_bas` | Search-and-replace edit on a `.bas` file. Matches exact text (including indentation), normalises line endings, creates `.bak` backup. Rejects ambiguous matches unless `replace_all=true`. |
 
 ### Manifest
 
@@ -167,6 +174,16 @@ EditText controls in layout JSON require specific properties that differ from ot
 
 ---
 
+## Common B4A Pitfall: DrawText Font Size is dp, Not Pixels
+
+`Canvas.DrawText` in B4A interprets the font size parameter as **dp** (density-independent pixels). Android multiplies by `deviceDpi / 160` internally, so the same numeric font size renders at very different pixel sizes across devices. If UI containers (bitmaps, rects) use hardcoded pixel dimensions but fonts scale with DPI, **text will overflow on low-DPI devices**.
+
+**Rule of thumb:** every UI dimension — container sizes, font sizes, positions, and touch zones — should be **proportional to `100%x` / `100%y`** (screen width/height in pixels). Never use hardcoded pixel values like `Dim btnW As Int = 200`.
+
+See `b4a_language_gotchas` for more B4A-specific pitfalls.
+
+---
+
 ## Notable Implementation Details
 
 - **`b4a_build` WorkingDirectory**: `B4ABuilder.exe` is invoked with `WorkingDirectory = baseFolder`. Without this, the builder cannot locate the `.b4a` file even when `-BaseFolder` is passed, because it resolves the project filename against the current working directory of the calling process.
@@ -223,6 +240,7 @@ B4aMcp/
 │   ├── DeviceTools.vb       # screenshot, tap, swipe, launch app, pixel scan, key event, input text
 │   ├── LayoutTools.vb       # read/write/list layouts + EditText validation
 │   ├── LibraryTools.vb      # list, docs, search libraries
+│   ├── BasTools.vb           # read/edit .bas source modules
 │   ├── ManifestTools.vb     # read/write manifest block
 │   ├── ProjectTools.vb      # project metadata, file listing, context
 │   └── SpriteTools.vb       # sprite PNG cleanup: edge artifact removal + auto-crop
