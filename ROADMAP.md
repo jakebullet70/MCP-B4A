@@ -116,11 +116,14 @@ build higher-level layout tooling on.
 - `b4a_clone_layout`, `b4a_create_layout`, `b4a_check_libraries` (§4, §6)
 - Automated tests (xUnit) — `B4aParser`, `BalConverter` roundtrip, `BasAnalyzer`, `b4a_lint` (§5)
 
-**Phase 3 — Reach & polish** ← *next*
-- Layout view manipulation + responsive audit (§4)
-- Sprite slice/pack pipeline (§4)
-- Emulator control, CI pipeline (§3, §5)
-- Structured-error envelope across all tools (deferred from Phase 1 — deliberate one-pass migration)
+**Phase 3 — Reach & polish** ✅ *done*
+- Layout view manipulation (`b4a_layout_add_view`) + diff (`b4a_diff_layout`) + responsive audit (`b4a_layout_check_anchors`) (§4)
+- Sprite slice/pack pipeline (`b4a_sprite_slice`, `b4a_sprite_pack`) + asset registration (`b4a_add_asset`) (§4)
+- Emulator control (`b4a_list_emulators`, `b4a_start_emulator`) + CI pipeline (GitHub Actions, windows-latest) (§3, §5)
+
+**Remaining / future**
+- Structured-error envelope across all tools (still deferred — would change the response contract `b4a_build_and_install` relies on; do as a deliberate one-pass migration when desired)
+- `b4a_bump_version` (§6), `b4a_module_graph` (§1), `b4a_insert_sub`/`b4a_edit_sub` (§2) — nice-to-haves not yet scheduled
 
 ---
 

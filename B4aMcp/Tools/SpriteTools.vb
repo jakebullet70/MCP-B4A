@@ -65,6 +65,122 @@ Namespace Tools
             End Try
         End Function
 
+        <McpServerTool, Description(
+            "Slices a sprite sheet into individual frame PNGs by a cols×rows grid. Each cell becomes baseName_<index>.png " &
+            "(row-major, 0-based). Frame size = sheetWidth/cols × sheetHeight/rows. Returns the frame size and the files written.")>
+        Public Shared Function B4aSpriteSlice(
+            <Description("Path to the sprite sheet PNG")> sheetPath As String,
+            <Description("Number of columns in the grid")> cols As Integer,
+            <Description("Number of rows in the grid")> rows As Integer,
+            <Description("Output directory (default: <sheet>_frames next to the sheet)")> Optional outputDir As String = "",
+            <Description("Base name for frames (default: the sheet filename)")> Optional baseName As String = ""
+        ) As String
+            If Not File.Exists(sheetPath) Then Return $"Error: file not found: {sheetPath}"
+            If cols < 1 OrElse rows < 1 Then Return "Error: cols and rows must be >= 1"
+            Try
+                Dim files As New List(Of String)
+                Dim fw As Integer, fh As Integer
+                Using src = New Bitmap(New MemoryStream(File.ReadAllBytes(sheetPath)))
+                    fw = src.Width \ cols
+                    fh = src.Height \ rows
+                    If fw < 1 OrElse fh < 1 Then Return $"Error: {cols}x{rows} grid is larger than the {src.Width}x{src.Height} sheet"
+
+                    Dim outDir = If(String.IsNullOrWhiteSpace(outputDir),
+                                    Path.Combine(Path.GetDirectoryName(sheetPath), Path.GetFileNameWithoutExtension(sheetPath) & "_frames"),
+                                    outputDir)
+                    Directory.CreateDirectory(outDir)
+                    Dim bn = If(String.IsNullOrWhiteSpace(baseName), Path.GetFileNameWithoutExtension(sheetPath), baseName)
+
+                    Dim idx = 0
+                    For r = 0 To rows - 1
+                        For c = 0 To cols - 1
+                            Using frame = New Bitmap(fw, fh, PixelFormat.Format32bppArgb)
+                                Using g = Graphics.FromImage(frame)
+                                    g.DrawImage(src, New Rectangle(0, 0, fw, fh), New Rectangle(c * fw, r * fh, fw, fh), GraphicsUnit.Pixel)
+                                End Using
+                                Dim outPath = Path.Combine(outDir, $"{bn}_{idx}.png")
+                                frame.Save(outPath, ImageFormat.Png)
+                                files.Add(outPath)
+                            End Using
+                            idx += 1
+                        Next
+                    Next
+                End Using
+
+                Return JsonConvert.SerializeObject(New With {
+                    .frameWidth = fw, .frameHeight = fh, .count = files.Count, .files = files
+                }, Formatting.Indented)
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
+        <McpServerTool, Description(
+            "Packs multiple frame PNGs into a single atlas image on a uniform grid (cell = the largest frame), and writes a " &
+            "JSON metadata sidecar (<atlas>.json) mapping each frame name to its {x, y, w, h} in the atlas. " &
+            "inputGlob is a folder glob like C:\frames\*.png. columns=0 packs a single horizontal strip.")>
+        Public Shared Function B4aSpritePack(
+            <Description("Glob for the frame PNGs, e.g. C:\frames\*.png")> inputGlob As String,
+            <Description("Output atlas PNG path")> outputPath As String,
+            <Description("Columns in the atlas grid (0 = single horizontal strip)")> Optional columns As Integer = 0
+        ) As String
+            Try
+                Dim dir = Path.GetDirectoryName(inputGlob)
+                Dim pat = Path.GetFileName(inputGlob)
+                If String.IsNullOrEmpty(dir) Then dir = Directory.GetCurrentDirectory()
+                If Not Directory.Exists(dir) Then Return $"Error: directory not found: {dir}"
+                Dim frameFiles = Directory.GetFiles(dir, pat).OrderBy(Function(f) f, StringComparer.Ordinal).ToArray()
+                If frameFiles.Length = 0 Then Return $"No files matched: {inputGlob}"
+
+                Dim frames As New List(Of (Name As String, Bmp As Bitmap))
+                Try
+                    Dim cellW = 0, cellH = 0
+                    For Each f In frameFiles
+                        Dim bmp = New Bitmap(New MemoryStream(File.ReadAllBytes(f)))
+                        frames.Add((Path.GetFileNameWithoutExtension(f), bmp))
+                        cellW = Math.Max(cellW, bmp.Width)
+                        cellH = Math.Max(cellH, bmp.Height)
+                    Next
+
+                    Dim numCols = If(columns <= 0, frames.Count, columns)
+                    Dim numRows = CInt(Math.Ceiling(frames.Count / CDbl(numCols)))
+
+                    Dim meta As New List(Of Object)
+                    Using atlas = New Bitmap(numCols * cellW, numRows * cellH, PixelFormat.Format32bppArgb)
+                        Using g = Graphics.FromImage(atlas)
+                            For i = 0 To frames.Count - 1
+                                Dim cx = (i Mod numCols) * cellW
+                                Dim cy = (i \ numCols) * cellH
+                                g.DrawImage(frames(i).Bmp, cx, cy)
+                                meta.Add(New With {.name = frames(i).Name, .x = cx, .y = cy, .w = frames(i).Bmp.Width, .h = frames(i).Bmp.Height})
+                            Next
+                        End Using
+                        Dim outDir = Path.GetDirectoryName(outputPath)
+                        If Not String.IsNullOrEmpty(outDir) Then Directory.CreateDirectory(outDir)
+                        atlas.Save(outputPath, ImageFormat.Png)
+                    End Using
+
+                    Dim metaPath = outputPath & ".json"
+                    Dim metaJson = JsonConvert.SerializeObject(New With {
+                        .atlas = Path.GetFileName(outputPath), .cellWidth = cellW, .cellHeight = cellH,
+                        .columns = numCols, .rows = numRows, .frames = meta
+                    }, Formatting.Indented)
+                    File.WriteAllText(metaPath, metaJson)
+
+                    Return JsonConvert.SerializeObject(New With {
+                        .atlasPath = outputPath, .metadataPath = metaPath,
+                        .frameCount = frames.Count, .cellSize = $"{cellW}x{cellH}", .grid = $"{numCols}x{numRows}"
+                    }, Formatting.Indented)
+                Finally
+                    For Each fr In frames
+                        fr.Bmp.Dispose()
+                    Next
+                End Try
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
         Private Shared Function CleanSingleSprite(filePath As String, edgePx As Integer, whiteThreshold As Integer, grayThreshold As Integer, autoCrop As Boolean, outputDest As String) As CleanResult
             Dim origW As Integer, origH As Integer
             Dim pixelsRemoved = 0

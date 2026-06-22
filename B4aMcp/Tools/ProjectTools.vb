@@ -181,6 +181,70 @@ Namespace Tools
             }, Formatting.Indented)
         End Function
 
+        <McpServerTool, Description(
+            "Adds an asset file to a B4A project: copies it into the project's Files\ folder and registers it " &
+            "(adds a File entry + bumps NumberOfFiles in the .b4a, with a .bak backup). Use for images, JSON, fonts, etc.")>
+        Public Shared Function B4aAddAsset(
+            <Description("Full path to the .b4a project file")> projectPath As String,
+            <Description("Full path to the source file to add")> sourceFile As String,
+            <Description("Optional destination filename within Files\ (default: the source filename)")> Optional destName As String = ""
+        ) As String
+            If Not File.Exists(projectPath) Then Return $"Error: Project not found: {projectPath}"
+            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return "Error: projectPath must be a .b4a file"
+            If Not File.Exists(sourceFile) Then Return $"Error: Source file not found: {sourceFile}"
+
+            Try
+                Dim projDir = Path.GetDirectoryName(projectPath)
+                If String.IsNullOrEmpty(projDir) Then projDir = "."
+                Dim assetName = If(String.IsNullOrWhiteSpace(destName), Path.GetFileName(sourceFile), destName.Trim())
+                Dim filesDir = Path.Combine(projDir, "Files")
+                Directory.CreateDirectory(filesDir)
+                Dim destPath = Path.Combine(filesDir, assetName)
+
+                File.Copy(sourceFile, destPath, overwrite:=True)
+
+                ' Register in the .b4a header (File{N} + NumberOfFiles)
+                Dim lines = File.ReadAllLines(projectPath).ToList()
+                Dim sepIdx = lines.FindIndex(Function(l) l.Trim() = "@EndOfDesignText@")
+                Dim headerEnd = If(sepIdx < 0, lines.Count, sepIdx)
+
+                Dim numIdx = -1, count = 0, maxIdx = 0
+                Dim alreadyRegistered = False
+                For i = 0 To headerEnd - 1
+                    Dim t = lines(i).Trim()
+                    If t.StartsWith("NumberOfFiles=", StringComparison.OrdinalIgnoreCase) Then
+                        numIdx = i
+                        Integer.TryParse(t.Substring(t.IndexOf("="c) + 1).Trim(), count)
+                    ElseIf t.StartsWith("File", StringComparison.OrdinalIgnoreCase) AndAlso t.Contains("=") Then
+                        Dim key = t.Substring(0, t.IndexOf("="c))
+                        Dim n As Integer
+                        If Integer.TryParse(key.Substring("File".Length), n) Then
+                            maxIdx = Math.Max(maxIdx, n)
+                            If t.Substring(t.IndexOf("="c) + 1).Trim().Equals(assetName, StringComparison.OrdinalIgnoreCase) Then alreadyRegistered = True
+                        End If
+                    End If
+                Next
+
+                If alreadyRegistered Then
+                    Return $"OK: copied to {destPath} (already registered in project)."
+                End If
+
+                File.Copy(projectPath, projectPath & ".bak", overwrite:=True)
+                lines.Insert(headerEnd, $"File{maxIdx + 1}={assetName}")
+                If numIdx >= 0 Then
+                    lines(numIdx) = $"NumberOfFiles={count + 1}"
+                Else
+                    lines.Insert(0, "NumberOfFiles=1")
+                End If
+                File.WriteAllText(projectPath, String.Join(Environment.NewLine, lines))
+                CacheManager.Invalidate(projectPath)
+
+                Return $"OK: added asset '{assetName}' to Files\ and registered as File{maxIdx + 1} (NumberOfFiles={count + 1}). Project .bak saved."
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
         <McpServerTool, Description("Returns the list of recently opened B4A projects from the B4A IDE history (b4xV5.ini RecentFile entries).")>
         Public Shared Function B4aListRecentProjects() As String
             Try

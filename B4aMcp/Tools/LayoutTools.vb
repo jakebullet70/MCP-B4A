@@ -166,6 +166,252 @@ Namespace Tools
             End Try
         End Function
 
+        ' Minimal-but-faithful control templates (drawables/props match B4A Designer output).
+        ' name, eventName, parent, coordinates and variant entries are injected at add time.
+        Private Const TplLabel As String =
+            "{""csType"":""Dbasic.Designer.MetaLabel"",""type"":"".LabelWrapper"",""javaType"":"".LabelWrapper""," &
+            """drawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":0,""color"":{""ValueType"":6,""Value"":""0x00FFFFFF""},""cornerRadius"":0}," &
+            """ellipsize"":""NONE"",""enabled"":true,""fontAwesome"":"""",""fontsize"":{""ValueType"":7,""Value"":14.0},""hAlignment"":""LEFT"",""hanchor"":0,""height"":40,""left"":0,""materialIcons"":"""",""padding"":{""ValueType"":12},""singleLine"":false,""style"":""NORMAL"",""tag"":"""",""text"":""Label"",""textColor"":{""ValueType"":6,""Value"":""0xFF000000""},""top"":0,""typeface"":""DEFAULT"",""vAlignment"":""CENTER_VERTICAL"",""vanchor"":0,""visible"":true,""width"":120}"
+
+        Private Const TplButton As String =
+            "{""csType"":""Dbasic.Designer.MetaButton"",""type"":"".ButtonWrapper"",""javaType"":"".ButtonWrapper""," &
+            """drawable"":{""csType"":""Dbasic.Designer.Drawable.StatelistDrawble"",""type"":"".drawable.StateListDrawable""," &
+            """disabledDrawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":0,""color"":{""ValueType"":6,""Value"":""0xFFDDDDDD""},""cornerRadius"":4}," &
+            """enabledDrawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":1,""color"":{""ValueType"":6,""Value"":""0xFFEEEEEE""},""cornerRadius"":4}," &
+            """pressedDrawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":1,""color"":{""ValueType"":6,""Value"":""0xFFCCCCCC""},""cornerRadius"":4}}," &
+            """ellipsize"":""NONE"",""enabled"":true,""fontAwesome"":"""",""fontsize"":{""ValueType"":7,""Value"":14.0},""hAlignment"":""CENTER_HORIZONTAL"",""hanchor"":0,""height"":60,""left"":0,""materialIcons"":"""",""padding"":{""ValueType"":12},""singleLine"":true,""style"":""NORMAL"",""tag"":"""",""text"":""Button"",""textColor"":{""ValueType"":6,""Value"":""0xFF000000""},""top"":0,""typeface"":""DEFAULT"",""vAlignment"":""CENTER_VERTICAL"",""vanchor"":0,""visible"":true,""width"":120}"
+
+        Private Const TplEditText As String =
+            "{""csType"":""Dbasic.Designer.MetaEditText"",""type"":"".EditTextWrapper"",""javaType"":"".EditTextWrapper""," &
+            """drawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":1,""color"":{""ValueType"":6,""Value"":""0xFFFFFFFF""},""cornerRadius"":0}," &
+            """enabled"":true,""fontAwesome"":"""",""fontsize"":{""ValueType"":7,""Value"":14.0},""forceDone"":false,""hAlignment"":""LEFT"",""hanchor"":0,""height"":60,""hint"":"""",""hintColor"":{""ValueType"":6,""Value"":""0xFFF0F0F0""},""inputType"":""TEXT"",""left"":0,""materialIcons"":"""",""padding"":{""ValueType"":12},""password"":false,""singleLine"":true,""style"":""NORMAL"",""tag"":"""",""text"":"""",""textColor"":{""ValueType"":6,""Value"":""0xFF000000""},""top"":0,""typeface"":""DEFAULT"",""vAlignment"":""CENTER_VERTICAL"",""vanchor"":0,""visible"":true,""width"":180,""wrap"":true}"
+
+        Private Const TplPanel As String =
+            "{""csType"":""Dbasic.Designer.MetaPanel"",""type"":"".PanelWrapper"",""javaType"":"".PanelWrapper""," &
+            """drawable"":{""csType"":""Dbasic.Designer.Drawable.ColorWithCornersDrawable"",""type"":"".drawable.ColorDrawable"",""borderColor"":{""ValueType"":6,""Value"":""0xFF000000""},""borderWidth"":0,""color"":{""ValueType"":6,""Value"":""0x00FFFFFF""},""cornerRadius"":0}," &
+            """elevation"":{""ValueType"":7,""Value"":0.0},""enabled"":true,""hanchor"":0,""height"":200,""left"":0,""padding"":{""ValueType"":12},""tag"":"""",""top"":0,""vanchor"":0,""visible"":true,""width"":200,"":kids"":{}}"
+
+        <McpServerTool, Description(
+            "Adds a view to an existing layout (.bal/.bil): a Label, Button, EditText, or Panel with B4A-correct defaults. " &
+            "Sets the name/eventName, parent (default 'Activity'), position and size, and adds the matching entry for every " &
+            "design variant. Creates a .bak backup. Then read it back / tweak with b4a_read_layout + b4a_write_layout.")>
+        Public Shared Function B4aLayoutAddView(
+            <Description("Full path to the .bal/.bil layout file")> layoutPath As String,
+            <Description("View type: label | button | edittext | panel")> viewType As String,
+            <Description("View name (also used as eventName), e.g. 'btnSave'")> name As String,
+            <Description("Parent view name (default 'Activity')")> Optional parent As String = "Activity",
+            <Description("Left in design pixels (default 10)")> Optional left As Integer = 10,
+            <Description("Top in design pixels (default 10)")> Optional top As Integer = 10,
+            <Description("Width in design pixels (default 120)")> Optional width As Integer = 120,
+            <Description("Height in design pixels (default 60)")> Optional height As Integer = 60,
+            <Description("Text/hint for label/button/edittext (optional)")> Optional text As String = ""
+        ) As String
+            Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
+            If ext <> ".bal" AndAlso ext <> ".bil" Then Return "Error: File must have .bal or .bil extension"
+            If Not File.Exists(layoutPath) Then Return $"Error: File not found: {layoutPath}"
+            If String.IsNullOrWhiteSpace(name) Then Return "Error: name is required"
+
+            Dim tpl As String
+            Dim designerType As String
+            Select Case viewType.Trim().ToLowerInvariant()
+                Case "label" : tpl = TplLabel : designerType = "Label"
+                Case "button" : tpl = TplButton : designerType = "Button"
+                Case "edittext", "edit" : tpl = TplEditText : designerType = "EditText"
+                Case "panel" : tpl = TplPanel : designerType = "Panel"
+                Case Else : Return $"Error: unknown viewType '{viewType}'. Use label | button | edittext | panel."
+            End Select
+
+            Try
+                Dim converter = New BalConverter(ext = ".bil")
+                Dim dir = Path.GetDirectoryName(layoutPath)
+                If String.IsNullOrEmpty(dir) Then dir = "."
+                Dim json = JObject.Parse(converter.ConvertBalToJson(dir, Path.GetFileName(layoutPath)))
+
+                Dim data = TryCast(json("Data"), JObject)
+                If data Is Nothing Then Return "Error: layout has no Data section"
+                Dim kids = TryCast(data(":kids"), JObject)
+                If kids Is Nothing Then
+                    kids = New JObject()
+                    data(":kids") = kids
+                End If
+
+                ' Reject duplicate names
+                Dim headers = TryCast(json("LayoutHeader")?("ControlsHeaders"), JArray)
+                If headers IsNot Nothing AndAlso headers.Any(Function(h) String.Equals(h("Name")?.ToString(), name, StringComparison.OrdinalIgnoreCase)) Then
+                    Return $"Error: a view named '{name}' already exists in this layout"
+                End If
+
+                ' Build the control
+                Dim ctrl = JObject.Parse(tpl)
+                ctrl("name") = name
+                ctrl("eventName") = name
+                ctrl("parent") = parent
+                ctrl("left") = left : ctrl("top") = top : ctrl("width") = width : ctrl("height") = height
+                If Not String.IsNullOrEmpty(text) Then
+                    If designerType = "EditText" Then ctrl("hint") = text Else ctrl("text") = text
+                End If
+
+                ' One variant entry per design variant
+                Dim variantCount = If(TryCast(json("Variants"), JArray)?.Count, 1)
+                For k = 0 To Math.Max(variantCount - 1, 0)
+                    ctrl("variant" & k) = New JObject(
+                        New JProperty("left", left), New JProperty("top", top),
+                        New JProperty("width", width), New JProperty("height", height),
+                        New JProperty("hanchor", 0), New JProperty("vanchor", 0))
+                Next
+
+                ' Append under the next integer key
+                Dim nextKey = 0
+                For Each p In kids.Properties()
+                    Dim n As Integer
+                    If Integer.TryParse(p.Name, n) Then nextKey = Math.Max(nextKey, n + 1)
+                Next
+                kids(nextKey.ToString()) = ctrl
+
+                ' Register the header
+                If headers Is Nothing Then
+                    headers = New JArray()
+                    DirectCast(json("LayoutHeader"), JObject)("ControlsHeaders") = headers
+                End If
+                headers.Add(New JObject(
+                    New JProperty("Name", name),
+                    New JProperty("JavaType", ctrl("javaType").ToString()),
+                    New JProperty("DesignerType", designerType)))
+
+                ' Run the existing EditText safety validation, then write
+                Dim warnings = ValidateAndFixEditTexts(json)
+                File.Copy(layoutPath, layoutPath & ".bak", overwrite:=True)
+                Using stream = File.Create(layoutPath)
+                    converter.ConvertJsonToBalInMemory(json, stream)
+                End Using
+                CacheManager.Invalidate(layoutPath)
+
+                Dim result = $"OK: added {designerType} '{name}' to {Path.GetFileName(layoutPath)} (parent={parent}, {width}x{height} @ {left},{top}). Backup saved."
+                If warnings.Count > 0 Then result &= Environment.NewLine & "[AUTO-FIX] " & String.Join("; ", warnings)
+                Return result
+            Catch ex As Exception
+                Return $"Error adding view: {ex.Message}"
+            End Try
+        End Function
+
+        <McpServerTool, Description(
+            "Compares two layouts (or the same layout before/after a change) and reports a human-readable diff: views added, " &
+            "views removed, and per-view property changes. Compares by view name across the :kids tree.")>
+        Public Shared Function B4aDiffLayout(
+            <Description("Path to the first (baseline) .bal/.bil layout")> layoutA As String,
+            <Description("Path to the second (compare) .bal/.bil layout")> layoutB As String
+        ) As String
+            If Not File.Exists(layoutA) Then Return $"Error: Not found: {layoutA}"
+            If Not File.Exists(layoutB) Then Return $"Error: Not found: {layoutB}"
+            Try
+                Dim a = FlattenViews(LoadLayoutJson(layoutA))
+                Dim b = FlattenViews(LoadLayoutJson(layoutB))
+
+                Dim added = b.Keys.Where(Function(k) Not a.ContainsKey(k)).OrderBy(Function(k) k).ToList()
+                Dim removed = a.Keys.Where(Function(k) Not b.ContainsKey(k)).OrderBy(Function(k) k).ToList()
+                Dim changed As New List(Of Object)
+
+                For Each k In a.Keys.Where(Function(x) b.ContainsKey(x))
+                    Dim propChanges As New List(Of Object)
+                    Dim av = a(k), bv = b(k)
+                    Dim allProps = av.Properties().Select(Function(p) p.Name).Union(bv.Properties().Select(Function(p) p.Name)).Where(Function(n) n <> ":kids")
+                    For Each pn In allProps
+                        Dim avp = av(pn), bvp = bv(pn)
+                        If Not JToken.DeepEquals(avp, bvp) Then
+                            propChanges.Add(New With {.property = pn, .from = If(avp Is Nothing, "(absent)", avp.ToString(Formatting.None)), .to = If(bvp Is Nothing, "(absent)", bvp.ToString(Formatting.None))})
+                        End If
+                    Next
+                    If propChanges.Count > 0 Then changed.Add(New With {.view = k, .changes = propChanges})
+                Next
+
+                Return JsonConvert.SerializeObject(New With {
+                    .layoutA = Path.GetFileName(layoutA),
+                    .layoutB = Path.GetFileName(layoutB),
+                    .addedViews = added,
+                    .removedViews = removed,
+                    .changedViews = changed,
+                    .identical = (added.Count = 0 AndAlso removed.Count = 0 AndAlso changed.Count = 0)
+                }, Formatting.Indented)
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
+        <McpServerTool, Description(
+            "Responsive audit: scans a layout's DesignerScript for hardcoded pixel positions/sizes that don't use %x/%y. " &
+            "B4A layouts should be proportional to screen size — flags lines like 'Button1.SetLeftAndRight(0, 200)' where a " &
+            "literal should likely be a percentage. Returns the flagged script lines with the offending numbers.")>
+        Public Shared Function B4aLayoutCheckAnchors(
+            <Description("Full path to the .bal/.bil layout file")> layoutPath As String
+        ) As String
+            If Not File.Exists(layoutPath) Then Return $"Error: Not found: {layoutPath}"
+            Try
+                Dim json = LoadLayoutJson(layoutPath)
+                Dim script = TryCast(json("LayoutHeader")?("DesignerScript"), JArray)
+                Dim findings As New List(Of Object)
+                ' A positioning call argument that is a bare number (not followed by % and not a dip/percent expression).
+                Dim callRx As New Text.RegularExpressions.Regex("\.(SetLeftAndRight|SetTopAndBottom|SetBounds|SetWidth|SetHeight|Left|Top|Width|Height)\b", Text.RegularExpressions.RegexOptions.IgnoreCase)
+                Dim bareNumRx As New Text.RegularExpressions.Regex("(?<![\d%.])\b\d{2,}\b(?!\s*%)(?!\s*dip)", Text.RegularExpressions.RegexOptions.IgnoreCase)
+
+                If script IsNot Nothing Then
+                    For Each entry In script
+                        Dim block = entry.ToString()
+                        For Each rawLine In block.Replace(vbCrLf, vbLf).Split(CChar(vbLf))
+                            Dim line = rawLine.Trim()
+                            If line.Length = 0 OrElse line.StartsWith("'") Then Continue For
+                            If Not callRx.IsMatch(line) Then Continue For
+                            Dim nums = bareNumRx.Matches(line)
+                            If nums.Count > 0 Then
+                                findings.Add(New With {.line = line, .hardcoded = nums.Cast(Of Text.RegularExpressions.Match)().Select(Function(m) m.Value).Distinct()})
+                            End If
+                        Next
+                    Next
+                End If
+
+                Return JsonConvert.SerializeObject(New With {
+                    .layout = Path.GetFileName(layoutPath),
+                    .findingCount = findings.Count,
+                    .note = If(findings.Count = 0, "No hardcoded pixel positions found in DesignerScript.", "Consider expressing these as %x/%y so the layout scales across devices."),
+                    .findings = findings
+                }, Formatting.Indented)
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
+        ' ── Layout helpers ────────────────────────────────────────────────────────
+
+        Private Shared Function LoadLayoutJson(layoutPath As String) As JObject
+            Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
+            Dim converter = New BalConverter(ext = ".bil")
+            Dim dir = Path.GetDirectoryName(layoutPath)
+            If String.IsNullOrEmpty(dir) Then dir = "."
+            Return JObject.Parse(converter.ConvertBalToJson(dir, Path.GetFileName(layoutPath)))
+        End Function
+
+        ''' <summary>Flattens the :kids tree into a name -> control-JObject map.</summary>
+        Private Shared Function FlattenViews(json As JObject) As Dictionary(Of String, JObject)
+            Dim map As New Dictionary(Of String, JObject)(StringComparer.OrdinalIgnoreCase)
+            Dim data = TryCast(json("Data"), JObject)
+            If data Is Nothing Then Return map
+            Dim rootName = If(data("name")?.ToString(), "Activity")
+            map(rootName) = data
+            CollectKids(data, map)
+            Return map
+        End Function
+
+        Private Shared Sub CollectKids(node As JObject, map As Dictionary(Of String, JObject))
+            Dim kids = TryCast(node(":kids"), JObject)
+            If kids Is Nothing Then Return
+            For Each p In kids.Properties()
+                Dim ch = TryCast(p.Value, JObject)
+                If ch Is Nothing Then Continue For
+                Dim nm = ch("name")?.ToString()
+                If Not String.IsNullOrEmpty(nm) AndAlso Not map.ContainsKey(nm) Then map(nm) = ch
+                CollectKids(ch, map)
+            Next
+        End Sub
+
         ''' <summary>
         ''' Validates EditText controls in layout JSON and injects missing required properties.
         ''' B4A runtime (EditTextWrapper.build) crashes with NullPointerException if 'password' is missing.

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    # Windows-only: the project targets win-x64 (self-contained) and uses
+    # System.Drawing.Common, which is supported only on Windows.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore B4aMcp.sln
+
+      - name: Build
+        run: dotnet build B4aMcp.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test B4aMcp.sln -c Release --no-build --verbosity normal
