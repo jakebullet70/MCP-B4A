@@ -13,23 +13,23 @@ Namespace Tools
         Public Shared Function B4aReadLayout(
             <Description("Full path to the .bal or .bil layout file")> layoutPath As String
         ) As String
-            If Not File.Exists(layoutPath) Then Return $"Error: File not found: {layoutPath}"
+            If Not File.Exists(layoutPath) Then Return ToolResult.Fail($"File not found: {layoutPath}")
             Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
             If ext <> ".bal" AndAlso ext <> ".bil" Then
-                Return "Error: File must have .bal or .bil extension"
+                Return ToolResult.Fail($"File must have .bal or .bil extension")
             End If
             Try
                 Dim cached As String = Nothing
-                If CacheManager.TryGetByMtime(Of String)(layoutPath, cached) Then Return cached
+                If CacheManager.TryGetByMtime(Of String)(layoutPath, cached) Then Return ToolResult.Ok(JObject.Parse(cached))
 
                 Dim converter = New BalConverter(ext = ".bil")
                 Dim dir = Path.GetDirectoryName(layoutPath)
                 If String.IsNullOrEmpty(dir) Then dir = "."
                 Dim json = converter.ConvertBalToJson(dir, Path.GetFileName(layoutPath))
                 CacheManager.SetByMtime(layoutPath, json)
-                Return json
+                Return ToolResult.Ok(JObject.Parse(json))
             Catch ex As Exception
-                Return $"Error reading layout: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -40,20 +40,20 @@ Namespace Tools
         ) As String
             Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
             If ext <> ".bal" AndAlso ext <> ".bil" Then
-                Return "Error: File must have .bal or .bil extension"
+                Return ToolResult.Fail($"File must have .bal or .bil extension")
             End If
             Try
                 Dim json As JObject
                 Try
                     json = JObject.Parse(jsonData)
                 Catch ex As JsonException
-                    Return $"Error: Invalid JSON — {ex.Message}"
+                    Return ToolResult.Fail($"Invalid JSON — {ex.Message}")
                 End Try
 
                 ' Validate required structure
-                If json("LayoutHeader") Is Nothing Then Return "Error: Missing 'LayoutHeader' in JSON"
-                If json("Variants") Is Nothing Then Return "Error: Missing 'Variants' in JSON"
-                If json("Data") Is Nothing Then Return "Error: Missing 'Data' in JSON"
+                If json("LayoutHeader") Is Nothing Then Return ToolResult.Fail($"Missing 'LayoutHeader' in JSON")
+                If json("Variants") Is Nothing Then Return ToolResult.Fail($"Missing 'Variants' in JSON")
+                If json("Data") Is Nothing Then Return ToolResult.Fail($"Missing 'Data' in JSON")
 
                 ' Validate and fix EditText controls
                 Dim warnings = ValidateAndFixEditTexts(json)
@@ -68,13 +68,9 @@ Namespace Tools
                     converter.ConvertJsonToBalInMemory(json, stream)
                 End Using
                 CacheManager.Invalidate(layoutPath)
-                Dim result = $"OK: backup saved as {layoutPath}.bak"
-                If warnings.Count > 0 Then
-                    result &= Environment.NewLine & "[AUTO-FIX] " & String.Join("; ", warnings)
-                End If
-                Return result
+                Return ToolResult.Message($"backup saved as {layoutPath}.bak", warnings)
             Catch ex As Exception
-                Return $"Error writing layout: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -85,7 +81,7 @@ Namespace Tools
             If projectDir.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
                 projectDir = If(Path.GetDirectoryName(projectDir), ".")
             End If
-            If Not Directory.Exists(projectDir) Then Return $"Error: Directory not found: {projectDir}"
+            If Not Directory.Exists(projectDir) Then Return ToolResult.Fail($"Directory not found: {projectDir}")
             Try
                 Dim layouts = Directory.GetFiles(projectDir, "*.bal", SearchOption.AllDirectories) _
                     .Concat(Directory.GetFiles(projectDir, "*.bil", SearchOption.AllDirectories)) _
@@ -95,12 +91,12 @@ Namespace Tools
                         .path = f,
                         .sizeKb = Math.Round(New FileInfo(f).Length / 1024.0, 1)
                     }).ToList()
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .count = layouts.Count,
                     .layouts = layouts
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -112,19 +108,19 @@ Namespace Tools
             <Description("Full path for the new layout file (same extension as source)")> destPath As String,
             <Description("Overwrite the destination if it exists (default false)")> Optional overwrite As Boolean = False
         ) As String
-            If Not File.Exists(sourcePath) Then Return $"Error: Source not found: {sourcePath}"
+            If Not File.Exists(sourcePath) Then Return ToolResult.Fail($"Source not found: {sourcePath}")
             Dim srcExt = Path.GetExtension(sourcePath).ToLowerInvariant()
             Dim dstExt = Path.GetExtension(destPath).ToLowerInvariant()
-            If srcExt <> ".bal" AndAlso srcExt <> ".bil" Then Return "Error: Source must be .bal or .bil"
-            If dstExt <> srcExt Then Return $"Error: Destination extension ({dstExt}) must match source ({srcExt})"
-            If File.Exists(destPath) AndAlso Not overwrite Then Return $"Error: Destination exists: {destPath} (set overwrite=true)"
+            If srcExt <> ".bal" AndAlso srcExt <> ".bil" Then Return ToolResult.Fail($"Source must be .bal or .bil")
+            If dstExt <> srcExt Then Return ToolResult.Fail($"Destination extension ({dstExt}) must match source ({srcExt})")
+            If File.Exists(destPath) AndAlso Not overwrite Then Return ToolResult.Fail($"Destination exists: {destPath} (set overwrite=true)")
             Try
                 Dim dir = Path.GetDirectoryName(destPath)
                 If Not String.IsNullOrEmpty(dir) Then Directory.CreateDirectory(dir)
                 File.Copy(sourcePath, destPath, overwrite)
-                Return $"OK: cloned to {destPath}"
+                Return ToolResult.Message($"cloned to {destPath}")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -139,9 +135,9 @@ Namespace Tools
             <Description("Overwrite if the file already exists (default false)")> Optional overwrite As Boolean = False
         ) As String
             Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
-            If ext <> ".bal" AndAlso ext <> ".bil" Then Return "Error: File must have .bal or .bil extension"
-            If File.Exists(layoutPath) AndAlso Not overwrite Then Return $"Error: File exists: {layoutPath} (set overwrite=true)"
-            If width <= 0 OrElse height <= 0 Then Return "Error: width and height must be positive"
+            If ext <> ".bal" AndAlso ext <> ".bil" Then Return ToolResult.Fail($"File must have .bal or .bil extension")
+            If File.Exists(layoutPath) AndAlso Not overwrite Then Return ToolResult.Fail($"File exists: {layoutPath} (set overwrite=true)")
+            If width <= 0 OrElse height <= 0 Then Return ToolResult.Fail($"width and height must be positive")
 
             Try
                 Dim scaleStr = scale.ToString(Globalization.CultureInfo.InvariantCulture)
@@ -160,9 +156,9 @@ Namespace Tools
                     converter.ConvertJsonToBalInMemory(json, stream)
                 End Using
                 CacheManager.Invalidate(layoutPath)
-                Return $"OK: created {width}x{height} layout at {layoutPath}. Add views with b4a_write_layout."
+                Return ToolResult.Message($"created {width}x{height} layout at {layoutPath}. Add views with b4a_write_layout.")
             Catch ex As Exception
-                Return $"Error creating layout: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -207,9 +203,9 @@ Namespace Tools
             <Description("Text/hint for label/button/edittext (optional)")> Optional text As String = ""
         ) As String
             Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
-            If ext <> ".bal" AndAlso ext <> ".bil" Then Return "Error: File must have .bal or .bil extension"
-            If Not File.Exists(layoutPath) Then Return $"Error: File not found: {layoutPath}"
-            If String.IsNullOrWhiteSpace(name) Then Return "Error: name is required"
+            If ext <> ".bal" AndAlso ext <> ".bil" Then Return ToolResult.Fail($"File must have .bal or .bil extension")
+            If Not File.Exists(layoutPath) Then Return ToolResult.Fail($"File not found: {layoutPath}")
+            If String.IsNullOrWhiteSpace(name) Then Return ToolResult.Fail($"name is required")
 
             Dim tpl As String
             Dim designerType As String
@@ -218,7 +214,7 @@ Namespace Tools
                 Case "button" : tpl = TplButton : designerType = "Button"
                 Case "edittext", "edit" : tpl = TplEditText : designerType = "EditText"
                 Case "panel" : tpl = TplPanel : designerType = "Panel"
-                Case Else : Return $"Error: unknown viewType '{viewType}'. Use label | button | edittext | panel."
+                Case Else : Return ToolResult.Fail($"unknown viewType '{viewType}'. Use label | button | edittext | panel.")
             End Select
 
             Try
@@ -228,7 +224,7 @@ Namespace Tools
                 Dim json = JObject.Parse(converter.ConvertBalToJson(dir, Path.GetFileName(layoutPath)))
 
                 Dim data = TryCast(json("Data"), JObject)
-                If data Is Nothing Then Return "Error: layout has no Data section"
+                If data Is Nothing Then Return ToolResult.Fail($"layout has no Data section")
                 Dim kids = TryCast(data(":kids"), JObject)
                 If kids Is Nothing Then
                     kids = New JObject()
@@ -238,7 +234,7 @@ Namespace Tools
                 ' Reject duplicate names
                 Dim headers = TryCast(json("LayoutHeader")?("ControlsHeaders"), JArray)
                 If headers IsNot Nothing AndAlso headers.Any(Function(h) String.Equals(h("Name")?.ToString(), name, StringComparison.OrdinalIgnoreCase)) Then
-                    Return $"Error: a view named '{name}' already exists in this layout"
+                    Return ToolResult.Fail($"a view named '{name}' already exists in this layout")
                 End If
 
                 ' Build the control
@@ -286,11 +282,9 @@ Namespace Tools
                 End Using
                 CacheManager.Invalidate(layoutPath)
 
-                Dim result = $"OK: added {designerType} '{name}' to {Path.GetFileName(layoutPath)} (parent={parent}, {width}x{height} @ {left},{top}). Backup saved."
-                If warnings.Count > 0 Then result &= Environment.NewLine & "[AUTO-FIX] " & String.Join("; ", warnings)
-                Return result
+                Return ToolResult.Message($"added {designerType} '{name}' to {Path.GetFileName(layoutPath)} (parent={parent}, {width}x{height} @ {left},{top}). Backup saved.", warnings)
             Catch ex As Exception
-                Return $"Error adding view: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -301,8 +295,8 @@ Namespace Tools
             <Description("Path to the first (baseline) .bal/.bil layout")> layoutA As String,
             <Description("Path to the second (compare) .bal/.bil layout")> layoutB As String
         ) As String
-            If Not File.Exists(layoutA) Then Return $"Error: Not found: {layoutA}"
-            If Not File.Exists(layoutB) Then Return $"Error: Not found: {layoutB}"
+            If Not File.Exists(layoutA) Then Return ToolResult.Fail($"Not found: {layoutA}")
+            If Not File.Exists(layoutB) Then Return ToolResult.Fail($"Not found: {layoutB}")
             Try
                 Dim a = FlattenViews(LoadLayoutJson(layoutA))
                 Dim b = FlattenViews(LoadLayoutJson(layoutB))
@@ -324,16 +318,16 @@ Namespace Tools
                     If propChanges.Count > 0 Then changed.Add(New With {.view = k, .changes = propChanges})
                 Next
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .layoutA = Path.GetFileName(layoutA),
                     .layoutB = Path.GetFileName(layoutB),
                     .addedViews = added,
                     .removedViews = removed,
                     .changedViews = changed,
                     .identical = (added.Count = 0 AndAlso removed.Count = 0 AndAlso changed.Count = 0)
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -344,7 +338,7 @@ Namespace Tools
         Public Shared Function B4aLayoutCheckAnchors(
             <Description("Full path to the .bal/.bil layout file")> layoutPath As String
         ) As String
-            If Not File.Exists(layoutPath) Then Return $"Error: Not found: {layoutPath}"
+            If Not File.Exists(layoutPath) Then Return ToolResult.Fail($"Not found: {layoutPath}")
             Try
                 Dim json = LoadLayoutJson(layoutPath)
                 Dim script = TryCast(json("LayoutHeader")?("DesignerScript"), JArray)
@@ -368,14 +362,14 @@ Namespace Tools
                     Next
                 End If
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .layout = Path.GetFileName(layoutPath),
                     .findingCount = findings.Count,
                     .note = If(findings.Count = 0, "No hardcoded pixel positions found in DesignerScript.", "Consider expressing these as %x/%y so the layout scales across devices."),
                     .findings = findings
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

@@ -46,7 +46,7 @@ Public Class SpriteToolsTests
         Try
             Dim sheet = MakeSheet(work, 4, 4)
             Dim res = SpriteTools.B4aSpriteSlice(sheet, 8, 8, work, "f")
-            Assert.StartsWith("Error", res)
+            Assert.Contains("""ok"": false", res)
         Finally
             Directory.Delete(work, True)
         End Try

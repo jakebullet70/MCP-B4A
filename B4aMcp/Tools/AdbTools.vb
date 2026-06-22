@@ -1,12 +1,13 @@
 Imports ModelContextProtocol.Server
 Imports System.ComponentModel
 Imports System.IO
-Imports Newtonsoft.Json
 Imports B4aMcp.Utils
 
 Namespace Tools
     <McpServerToolType>
     Public Class AdbTools
+
+        Private Const AdbNotFound As String = "adb not found. Set adbPath in config or install Android SDK Platform Tools."
 
         <McpServerTool, Description("Returns logcat output filtered by the 'B4A' tag. Read-only.")>
         Public Shared Async Function B4aGetLogcat(
@@ -21,16 +22,18 @@ Namespace Tools
                 tagFilter &= " *:S"
 
                 Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}logcat -d {tagFilter}", 15_000, "[stderr] ")
-                If out Is Nothing Then
-                    Return "Error: adb not found. Set adbPath in config or install Android SDK Platform Tools."
-                End If
+                If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
 
                 Dim allLines = out.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
                 Dim lastLines = allLines.TakeLast(lines).ToArray()
-                Dim prefix = If(allLines.Length > lines, $"[showing last {lines} of {allLines.Length} lines]", $"[{lastLines.Length} lines]")
-                Return $"{prefix}{Environment.NewLine}{String.Join(Environment.NewLine, lastLines)}"
+                Return ToolResult.Ok(New With {
+                    .totalLines = allLines.Length,
+                    .returnedLines = lastLines.Length,
+                    .truncated = allLines.Length > lines,
+                    .log = String.Join(Environment.NewLine, lastLines)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -51,13 +54,11 @@ Namespace Tools
 
                 ' -T 1 starts the follow near "now" so we mostly see fresh lines.
                 Dim out = Await AdbRunner.RunTextFor($"{AdbRunner.DeviceArg(deviceSerial)}logcat -T 1 {tagFilter}", seconds * 1000)
-                If out Is Nothing Then
-                    Return "Error: adb not found. Set adbPath in config or install Android SDK Platform Tools."
-                End If
+                If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
                 Dim lines = out.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
-                Return $"[watched {seconds}s, {lines.Length} line(s)]{Environment.NewLine}{out}"
+                Return ToolResult.Ok(New With {.watchedSeconds = seconds, .lineCount = lines.Length, .log = out})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -71,9 +72,7 @@ Namespace Tools
             Try
                 ' Pull both the B4A tag and AndroidRuntime (where uncaught exceptions land).
                 Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}logcat -d AndroidRuntime:E B4A:* System.err:W *:S", 15_000)
-                If out Is Nothing Then
-                    Return "Error: adb not found. Set adbPath in config or install Android SDK Platform Tools."
-                End If
+                If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
 
                 Dim allLines = out.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
 
@@ -95,16 +94,13 @@ Namespace Tools
                     trace = String.Join(Environment.NewLine, allLines.Skip(fatalIdx).Take(40))
                 End If
 
-                If b4aErr Is Nothing AndAlso trace Is Nothing Then
-                    Return "No crash found in the current logcat buffer. Reproduce the crash, then call this again (or use b4a_tail_log while reproducing)."
-                End If
-
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
+                    .crashFound = (b4aErr IsNot Nothing OrElse trace IsNot Nothing),
                     .b4aError = b4aErr,
                     .fatalException = trace
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -115,9 +111,7 @@ Namespace Tools
                 If CacheManager.TryGetByTtl(Of String)("adb:devices", cached) Then Return cached
 
                 Dim raw = Await AdbRunner.RunText("devices -l", 10_000)
-                If raw Is Nothing Then
-                    Return "Error: adb not found. Set adbPath in config or install Android SDK Platform Tools."
-                End If
+                If raw Is Nothing Then Return ToolResult.Fail(AdbNotFound)
 
                 Dim deviceLines = raw.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries) _
                     .Skip(1) _
@@ -133,14 +127,11 @@ Namespace Tools
                     }
                 End Function).ToList()
 
-                Dim result = JsonConvert.SerializeObject(New With {
-                    .count = devices.Count,
-                    .devices = devices
-                }, Formatting.Indented)
+                Dim result = ToolResult.Ok(New With {.count = devices.Count, .devices = devices})
                 CacheManager.SetByTtl("adb:devices", result, 5)
                 Return result
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -149,15 +140,15 @@ Namespace Tools
             <Description("Full path to the APK file to install")> apkPath As String,
             <Description("ADB device serial (optional, uses first device if not specified)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If Not File.Exists(apkPath) Then Return $"Error: APK not found: {apkPath}"
+            If Not File.Exists(apkPath) Then Return ToolResult.Fail($"APK not found: {apkPath}")
             Try
                 Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}install -r ""{apkPath}""", 60_000)
-                If out Is Nothing Then
-                    Return "Error: adb not found. Set adbPath in config or install Android SDK Platform Tools."
-                End If
-                Return out
+                If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
+                Dim success = out.IndexOf("Success", StringComparison.OrdinalIgnoreCase) >= 0
+                If Not success Then Return ToolResult.Fail($"adb install did not report success: {out}", New With {.output = out})
+                Return ToolResult.Ok(New With {.success = True, .output = out})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -166,9 +157,10 @@ Namespace Tools
             <Description("App package name (e.g. b4a.example)")> packageName As String,
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If String.IsNullOrWhiteSpace(packageName) Then Return "Error: packageName is required"
+            If String.IsNullOrWhiteSpace(packageName) Then Return ToolResult.Fail("packageName is required")
             Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}uninstall {packageName}", 30_000)
-            Return If(out Is Nothing, "Error: adb not found.", out)
+            If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
+            Return ToolResult.Ok(New With {.package = packageName, .output = out})
         End Function
 
         <McpServerTool, Description("Clears an app's data and cache (adb shell pm clear) for a clean-slate test run.")>
@@ -176,9 +168,10 @@ Namespace Tools
             <Description("App package name")> packageName As String,
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If String.IsNullOrWhiteSpace(packageName) Then Return "Error: packageName is required"
+            If String.IsNullOrWhiteSpace(packageName) Then Return ToolResult.Fail("packageName is required")
             Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}shell pm clear {packageName}", 15_000)
-            Return If(out Is Nothing, "Error: adb not found.", out)
+            If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
+            Return ToolResult.Ok(New With {.package = packageName, .output = out})
         End Function
 
         <McpServerTool, Description("Force-stops a running app (adb shell am force-stop).")>
@@ -186,10 +179,10 @@ Namespace Tools
             <Description("App package name")> packageName As String,
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If String.IsNullOrWhiteSpace(packageName) Then Return "Error: packageName is required"
+            If String.IsNullOrWhiteSpace(packageName) Then Return ToolResult.Fail("packageName is required")
             Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}shell am force-stop {packageName}", 10_000)
-            If out Is Nothing Then Return "Error: adb not found."
-            Return If(String.IsNullOrEmpty(out), $"Force-stopped {packageName}", out)
+            If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
+            Return ToolResult.Message($"Force-stopped {packageName}")
         End Function
 
         <McpServerTool, Description(
@@ -202,11 +195,12 @@ Namespace Tools
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
             If String.IsNullOrWhiteSpace(packageName) OrElse String.IsNullOrWhiteSpace(permission) Then
-                Return "Error: packageName and permission are required"
+                Return ToolResult.Fail("packageName and permission are required")
             End If
             Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}shell pm grant {packageName} {permission}", 10_000)
-            If out Is Nothing Then Return "Error: adb not found."
-            Return If(String.IsNullOrEmpty(out), $"Granted {permission} to {packageName}", out)
+            If out Is Nothing Then Return ToolResult.Fail(AdbNotFound)
+            If Not String.IsNullOrEmpty(out) Then Return ToolResult.Fail($"pm grant reported: {out}", New With {.output = out})
+            Return ToolResult.Message($"Granted {permission} to {packageName}")
         End Function
 
     End Class

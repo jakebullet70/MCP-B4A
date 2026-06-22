@@ -12,13 +12,13 @@ Namespace Tools
         Public Shared Function B4aReadProject(
             <Description("Full path to the .b4a project file")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: File must have .b4a extension"
+                Return ToolResult.Fail($"File must have .b4a extension")
             End If
             Try
                 Dim proj = B4aParser.Parse(projectPath)
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .appLabel = proj.AppLabel,
                     .packageName = proj.PackageName,
                     .versionCode = proj.VersionCode,
@@ -27,9 +27,9 @@ Namespace Tools
                     .modules = proj.Modules.Select(Function(m) Path.GetFileName(m)).ToList(),
                     .layouts = proj.Layouts.Select(Function(l) Path.GetFileName(l)).ToList(),
                     .buildConfigs = proj.BuildConfigs
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error parsing project: {ex.Message}"
+                Return ToolResult.Fail($"parsing project: {ex.Message}")
             End Try
         End Function
 
@@ -37,7 +37,7 @@ Namespace Tools
         Public Shared Function B4aListProjectFiles(
             <Description("Full path to the .b4a project file")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             Try
                 Dim proj = B4aParser.Parse(projectPath)
                 Dim projectDir = Path.GetDirectoryName(projectPath)
@@ -51,14 +51,14 @@ Namespace Tools
                     Next
                 End If
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .projectFile = projectPath,
                     .sourceModules = proj.Modules,
                     .layouts = proj.Layouts.Select(Function(l) Path.GetFileName(l)).ToList(),
                     .assets = assets
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -66,7 +66,7 @@ Namespace Tools
         Public Shared Function B4aProjectContext(
             <Description("Full path to the .b4a project file")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             Try
                 Dim proj = B4aParser.Parse(projectPath)
 
@@ -79,7 +79,7 @@ Namespace Tools
                     If errorLine IsNot Nothing Then lastError = errorLine.Trim()
                 End If
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .appLabel = proj.AppLabel,
                     .packageName = proj.PackageName,
                     .versionCode = proj.VersionCode,
@@ -88,9 +88,9 @@ Namespace Tools
                     .modules = proj.Modules.Select(Function(m) Path.GetFileName(m)).ToList(),
                     .layouts = proj.Layouts.Select(Function(l) Path.GetFileName(l)).ToList(),
                     .lastBuildError = If(String.IsNullOrEmpty(lastError), Nothing, CObj(lastError))
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -175,10 +175,10 @@ Namespace Tools
                     .fix = "Ensure Build1=Default,<packagename> in the .b4a project file."
                 }
             }
-            Return JsonConvert.SerializeObject(New With {
+            Return ToolResult.Ok(New With {
                 .count = gotchas.Count,
                 .gotchas = gotchas
-            }, Formatting.Indented)
+            })
         End Function
 
         <McpServerTool, Description(
@@ -189,9 +189,9 @@ Namespace Tools
             <Description("Full path to the source file to add")> sourceFile As String,
             <Description("Optional destination filename within Files\ (default: the source filename)")> Optional destName As String = ""
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: Project not found: {projectPath}"
-            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return "Error: projectPath must be a .b4a file"
-            If Not File.Exists(sourceFile) Then Return $"Error: Source file not found: {sourceFile}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"Project not found: {projectPath}")
+            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return ToolResult.Fail($"projectPath must be a .b4a file")
+            If Not File.Exists(sourceFile) Then Return ToolResult.Fail($"Source file not found: {sourceFile}")
 
             Try
                 Dim projDir = Path.GetDirectoryName(projectPath)
@@ -226,7 +226,7 @@ Namespace Tools
                 Next
 
                 If alreadyRegistered Then
-                    Return $"OK: copied to {destPath} (already registered in project)."
+                    Return ToolResult.Message($"copied to {destPath} (already registered in project).")
                 End If
 
                 File.Copy(projectPath, projectPath & ".bak", overwrite:=True)
@@ -239,9 +239,9 @@ Namespace Tools
                 File.WriteAllText(projectPath, String.Join(Environment.NewLine, lines))
                 CacheManager.Invalidate(projectPath)
 
-                Return $"OK: added asset '{assetName}' to Files\ and registered as File{maxIdx + 1} (NumberOfFiles={count + 1}). Project .bak saved."
+                Return ToolResult.Message($"added asset '{assetName}' to Files\ and registered as File{maxIdx + 1} (NumberOfFiles={count + 1}). Project .bak saved.")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -265,12 +265,12 @@ Namespace Tools
                         Exit Do
                     End If
                 Loop
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .count = recentFiles.Count,
                     .recentProjects = recentFiles
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

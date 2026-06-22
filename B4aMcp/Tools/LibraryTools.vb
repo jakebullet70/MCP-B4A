@@ -30,7 +30,7 @@ Namespace Tools
                 End If
 
                 If dirs.Count = 0 Then
-                    Return "Error: No library directories configured. Set b4aPath and/or additionalLibrariesPath."
+                    Return ToolResult.Fail($"No library directories configured. Set b4aPath and/or additionalLibrariesPath.")
                 End If
 
                 Dim libs As New List(Of Object)()
@@ -55,14 +55,14 @@ Namespace Tools
                     Next
                 Next
 
-                Dim result = JsonConvert.SerializeObject(New With {
+                Dim result = ToolResult.Ok(New With {
                     .count = libs.Count,
                     .libraries = libs.OrderBy(Function(l) DirectCast(l, Object).GetType().GetProperty("name").GetValue(l))
-                }, Formatting.Indented)
+                })
                 CacheManager.SetByTtl(cacheKey, result, 60)
                 Return result
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -72,10 +72,10 @@ Namespace Tools
         ) As String
             Try
                 Dim xmlPath = FindLibraryXml(libraryName)
-                If xmlPath Is Nothing Then Return $"Error: Library XML not found for '{libraryName}'"
+                If xmlPath Is Nothing Then Return ToolResult.Fail($"Library XML not found for '{libraryName}'")
 
                 Dim cached As String = Nothing
-                If CacheManager.TryGetByMtime(Of String)(xmlPath, cached) Then Return cached
+                If CacheManager.TryGetByMtime(Of String)(xmlPath, cached) Then Return ToolResult.Ok(New With {.docs = cached})
 
                 Dim doc = XDocument.Load(xmlPath)
                 Dim sb As New System.Text.StringBuilder()
@@ -143,9 +143,9 @@ Namespace Tools
 
                 Dim result = sb.ToString()
                 CacheManager.SetByMtime(xmlPath, result)
-                Return result
+                Return ToolResult.Ok(New With {.docs = result})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -166,7 +166,7 @@ Namespace Tools
                     dirs.Add(cfg.AdditionalLibrariesPath)
                 End If
 
-                If dirs.Count = 0 Then Return "Error: No library directories configured."
+                If dirs.Count = 0 Then Return ToolResult.Fail($"No library directories configured.")
 
                 Dim matches As New List(Of Object)()
                 Dim queryLower = query.ToLowerInvariant()
@@ -211,13 +211,13 @@ Namespace Tools
                     Next
                 Next
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .query = query,
                     .count = matches.Count,
                     .results = matches.Take(50)
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -228,8 +228,8 @@ Namespace Tools
         Public Shared Function B4aCheckLibraries(
             <Description("Full path to the .b4a project file")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
-            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return "Error: File must have .b4a extension"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
+            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return ToolResult.Fail($"File must have .b4a extension")
 
             Try
                 Dim proj = B4aParser.Parse(projectPath)
@@ -276,7 +276,7 @@ Namespace Tools
                     End If
                 Next
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .project = Path.GetFileName(projectPath),
                     .referenced = proj.Libraries.Count,
                     .installedScanned = dirs,
@@ -284,9 +284,9 @@ Namespace Tools
                     .missing = missing,
                     .found = found,
                     .note = If(missing.Count > 0, "Missing libraries will fail the build. Some core/internal libraries may be bundled and not appear here.", "All referenced libraries resolved.")
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

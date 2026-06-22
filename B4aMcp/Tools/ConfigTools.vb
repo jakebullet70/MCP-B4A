@@ -24,12 +24,9 @@ Namespace Tools
             }
             Dim needsSetup = String.IsNullOrEmpty(cfg.B4aPath)
             If needsSetup Then
-                Return JsonConvert.SerializeObject(New With {
-                    .config = result,
-                    .warning = "b4aPath is not set. Use b4a_set_config to configure. Example: b4a_set_config(key='b4aPath', value='C:\\B4A')"
-                }, Formatting.Indented)
+                Return ToolResult.Ok(result, {"b4aPath is not set. Use b4a_set_config to configure. Example: b4a_set_config(key='b4aPath', value='C:\B4A')"})
             End If
-            Return JsonConvert.SerializeObject(result, Formatting.Indented)
+            Return ToolResult.Ok(result)
         End Function
 
         <McpServerTool, Description("Updates a configuration value. Valid keys: b4aPath, additionalLibrariesPath, adbPath, projectsRoot, sharedModulesFolder, javaBin")>
@@ -37,7 +34,11 @@ Namespace Tools
             <Description("Configuration key to set (b4aPath, additionalLibrariesPath, adbPath, projectsRoot, sharedModulesFolder, javaBin)")> key As String,
             <Description("New value for the configuration key")> value As String
         ) As String
-            Return AppConfig.SetValue(key, value)
+            Dim res = AppConfig.SetValue(key, value)
+            If res.StartsWith("OK", StringComparison.OrdinalIgnoreCase) Then
+                Return ToolResult.Message(res)
+            End If
+            Return ToolResult.Fail(res)
         End Function
 
     End Class

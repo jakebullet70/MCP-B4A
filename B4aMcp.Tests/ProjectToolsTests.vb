@@ -16,7 +16,7 @@ Public Class ProjectToolsTests
             File.WriteAllText(src, "not really a png")
 
             Dim res = ProjectTools.B4aAddAsset(proj, src)
-            Assert.StartsWith("OK", res)
+            Assert.Contains("""ok"": true", res)
 
             ' File copied into Files\ and registered (fixture starts at NumberOfFiles=1).
             Assert.True(File.Exists(Path.Combine(work, "Files", "icon.png")))

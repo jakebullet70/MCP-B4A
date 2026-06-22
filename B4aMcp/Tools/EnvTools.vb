@@ -82,13 +82,13 @@ Namespace Tools
 
             Dim failures = checks.Where(Function(c) CStr(c.GetType().GetProperty("status").GetValue(c)) = "fail").Count
             Dim warns = checks.Where(Function(c) CStr(c.GetType().GetProperty("status").GetValue(c)) = "warn").Count
-            Return JsonConvert.SerializeObject(New With {
+            Return ToolResult.Ok(New With {
                 .summary = If(failures > 0, "FAIL", If(warns > 0, "WARN", "OK")),
                 .failures = failures,
                 .warnings = warns,
                 .configSources = AppConfig.GetSources(),
                 .checks = checks
-            }, Formatting.Indented)
+            })
         End Function
 
         <McpServerTool, Description(
@@ -96,15 +96,15 @@ Namespace Tools
         Public Shared Function B4aOpenIde(
             <Description("Full path to the .b4a project file to open")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: File must have .b4a extension"
+                Return ToolResult.Fail($"File must have .b4a extension")
             End If
 
             Dim cfg = AppConfig.Load()
-            If String.IsNullOrEmpty(cfg.B4aPath) Then Return "Error: b4aPath is not configured."
+            If String.IsNullOrEmpty(cfg.B4aPath) Then Return ToolResult.Fail($"b4aPath is not configured.")
             Dim idePath = Path.Combine(cfg.B4aPath, "B4A.exe")
-            If Not File.Exists(idePath) Then Return $"Error: B4A.exe not found at {idePath}"
+            If Not File.Exists(idePath) Then Return ToolResult.Fail($"B4A.exe not found at {idePath}")
 
             Try
                 Process.Start(New ProcessStartInfo() With {
@@ -112,9 +112,9 @@ Namespace Tools
                     .Arguments = $"""{projectPath}""",
                     .UseShellExecute = True
                 })
-                Return $"OK: opening {Path.GetFileName(projectPath)} in B4A IDE"
+                Return ToolResult.Message($"opening {Path.GetFileName(projectPath)} in B4A IDE")
             Catch ex As Exception
-                Return $"Error launching IDE: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

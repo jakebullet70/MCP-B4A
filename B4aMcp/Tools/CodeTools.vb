@@ -18,17 +18,17 @@ Namespace Tools
         Public Shared Function B4aOutline(
             <Description("Full path to the .bas or .b4a file")> basPath As String
         ) As String
-            If Not File.Exists(basPath) Then Return $"Error: File not found: {basPath}"
+            If Not File.Exists(basPath) Then Return ToolResult.Fail($"File not found: {basPath}")
             Dim ext = Path.GetExtension(basPath).ToLowerInvariant()
             If ext <> ".bas" AndAlso ext <> ".b4a" Then
-                Return "Error: File must have .bas or .b4a extension"
+                Return ToolResult.Fail("File must have .bas or .b4a extension")
             End If
             Try
                 Dim cached As String = Nothing
                 If CacheManager.TryGetByMtime(Of String)("outline:" & basPath, cached) Then Return cached
 
                 Dim outline = BasAnalyzer.Outline(File.ReadAllText(basPath))
-                Dim result = JsonConvert.SerializeObject(New With {
+                Dim result = ToolResult.Ok(New With {
                     .file = Path.GetFileName(basPath),
                     .lineCount = outline.LineCount,
                     .subCount = outline.Subs.Count,
@@ -43,11 +43,11 @@ Namespace Tools
                     .types = outline.Types,
                     .regions = outline.Regions,
                     .globals = outline.Globals
-                }, Formatting.Indented)
+                })
                 CacheManager.SetByMtime("outline:" & basPath, result)
                 Return result
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -60,7 +60,7 @@ Namespace Tools
             <Description("Symbol name to find (Sub, Type, or global variable). Case-insensitive.")> symbol As String,
             <Description("If true, include every reference line; if false (default), only definitions plus a reference count per file.")> Optional includeReferences As Boolean = False
         ) As String
-            If String.IsNullOrWhiteSpace(symbol) Then Return "Error: symbol cannot be empty"
+            If String.IsNullOrWhiteSpace(symbol) Then Return ToolResult.Fail("symbol cannot be empty")
 
             Dim searchDir As String
             If File.Exists(projectPath) AndAlso projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
@@ -68,7 +68,7 @@ Namespace Tools
             ElseIf Directory.Exists(projectPath) Then
                 searchDir = projectPath
             Else
-                Return $"Error: Not found: {projectPath} (expected a .b4a file or a directory)"
+                Return ToolResult.Fail($"Not found: {projectPath} (expected a .b4a file or a directory)")
             End If
             If String.IsNullOrEmpty(searchDir) Then searchDir = "."
 
@@ -129,16 +129,16 @@ Namespace Tools
                     End If
                 Next
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .symbol = symbol,
                     .filesScanned = files.Count,
                     .definitionCount = definitions.Count,
                     .definitions = definitions,
                     .totalReferences = totalRefs,
                     .references = references
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -160,7 +160,7 @@ Namespace Tools
             ElseIf Directory.Exists(target) Then
                 files.AddRange(Directory.GetFiles(target, "*.bas", SearchOption.AllDirectories))
             Else
-                Return $"Error: Not found (expected .bas, .b4a, or a directory): {target}"
+                Return ToolResult.Fail($"Not found (expected .bas, .b4a, or a directory): {target}")
             End If
 
             Try
@@ -174,13 +174,13 @@ Namespace Tools
                         fileReports.Add(New With {.file = Path.GetFileName(f), .path = f, .findingCount = findings.Count, .findings = findings})
                     End If
                 Next
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .filesLinted = files.Count,
                     .totalFindings = total,
                     .reports = fileReports
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -195,9 +195,9 @@ Namespace Tools
             <Description("New symbol name")> newName As String,
             <Description("Set true to actually write changes; false (default) returns a preview only")> Optional apply As Boolean = False
         ) As String
-            If String.IsNullOrWhiteSpace(oldName) OrElse String.IsNullOrWhiteSpace(newName) Then Return "Error: oldName and newName are required"
-            If Not Regex.IsMatch(newName, "^[A-Za-z_]\w*$") Then Return $"Error: '{newName}' is not a valid identifier"
-            If oldName = newName Then Return "Error: oldName and newName are identical"
+            If String.IsNullOrWhiteSpace(oldName) OrElse String.IsNullOrWhiteSpace(newName) Then Return ToolResult.Fail("oldName and newName are required")
+            If Not Regex.IsMatch(newName, "^[A-Za-z_]\w*$") Then Return ToolResult.Fail($"'{newName}' is not a valid identifier")
+            If oldName = newName Then Return ToolResult.Fail("oldName and newName are identical")
 
             Dim searchDir As String
             If File.Exists(projectPath) AndAlso projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
@@ -205,7 +205,7 @@ Namespace Tools
             ElseIf Directory.Exists(projectPath) Then
                 searchDir = projectPath
             Else
-                Return $"Error: Not found: {projectPath}"
+                Return ToolResult.Fail($"Not found: {projectPath}")
             End If
             If String.IsNullOrEmpty(searchDir) Then searchDir = "."
 
@@ -244,7 +244,7 @@ Namespace Tools
                     End If
                 Next
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .applied = apply,
                     .oldName = oldName,
                     .newName = newName,
@@ -252,9 +252,9 @@ Namespace Tools
                     .totalReplacements = totalReplacements,
                     .note = If(apply, "Changes written; .bak backups created per file.", "DRY RUN — set apply=true to write these changes."),
                     .files = fileChanges
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

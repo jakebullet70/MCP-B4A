@@ -40,7 +40,7 @@ Namespace Tools
             Try
                 If delayMs > 0 Then Await Task.Delay(delayMs)
 
-                If AdbRunner.FindAdb() Is Nothing Then Return "Error: adb not found. Check adbPath in config."
+                If AdbRunner.FindAdb() Is Nothing Then Return ToolResult.Fail("adb not found. Check adbPath in config.")
 
                 If String.IsNullOrEmpty(outputPath) Then
                     outputPath = Path.Combine("C:\temp", "b4a_ss.png")
@@ -52,7 +52,7 @@ Namespace Tools
                 Dim pngBytes = Await AdbRunner.RunBinary($"{AdbRunner.DeviceArg(deviceSerial)}exec-out screencap -p", 15_000)
 
                 If pngBytes Is Nothing OrElse pngBytes.Length < 100 Then
-                    Return $"Error: Screenshot returned only {If(pngBytes Is Nothing, 0, pngBytes.Length)} bytes — device may not be connected or screen may be off."
+                    Return ToolResult.Fail($"Screenshot returned only {If(pngBytes Is Nothing, 0, pngBytes.Length)} bytes — device may not be connected or screen may be off.")
                 End If
 
                 ' Load to get dimensions (and optionally crop)
@@ -73,24 +73,24 @@ Namespace Tools
                             cropped.Save(outputPath, ImageFormat.Png)
                         End Using
 
-                        Return JsonConvert.SerializeObject(New With {
+                        Return ToolResult.Ok(New With {
                             .path = outputPath,
                             .screenSize = $"{screenW}x{screenH}",
                             .crop = $"({cropX},{cropY}) {cw}x{ch}",
                             .savedBytes = New FileInfo(outputPath).Length
-                        }, Formatting.Indented)
+                        })
                     Else
                         File.WriteAllBytes(outputPath, pngBytes)
-                        Return JsonConvert.SerializeObject(New With {
+                        Return ToolResult.Ok(New With {
                             .path = outputPath,
                             .size = $"{screenW}x{screenH}",
                             .savedBytes = pngBytes.Length
-                        }, Formatting.Indented)
+                        })
                     End If
                 End Using
 
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -154,7 +154,7 @@ Namespace Tools
             <Description("Region scan: 'x y width height stepPx'. E.g. '0 600 1080 400 30' samples every 30px.")>
             Optional region As String = ""
         ) As String
-            If Not File.Exists(imagePath) Then Return $"Error: File not found: {imagePath}"
+            If Not File.Exists(imagePath) Then Return ToolResult.Fail($"File not found: {imagePath}")
 
             Try
                 ' Load without locking the file
@@ -209,15 +209,15 @@ Namespace Tools
                         End If
                     End If
 
-                    Return JsonConvert.SerializeObject(New With {
+                    Return ToolResult.Ok(New With {
                         .imageSize = $"{bmp.Width}x{bmp.Height}",
                         .samples = results.Count,
                         .pixels = results
-                    }, Formatting.Indented)
+                    })
                 End Using
 
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -244,7 +244,7 @@ Namespace Tools
             text As String,
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If String.IsNullOrEmpty(text) Then Return "Error: text is empty"
+            If String.IsNullOrEmpty(text) Then Return ToolResult.Fail("text is empty")
             Return Await RunAdbShell($"input text ""{text}""", deviceSerial, $"Text sent: {text}")
         End Function
 
@@ -253,10 +253,11 @@ Namespace Tools
         Private Shared Async Function RunAdbShell(shellCmd As String, deviceSerial As String, successMsg As String) As Task(Of String)
             Try
                 Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}shell {shellCmd}", 10_000)
-                If out Is Nothing Then Return "Error: adb not found."
-                Return If(String.IsNullOrEmpty(out), successMsg, out)
+                If out Is Nothing Then Return ToolResult.Fail("adb not found.")
+                If String.IsNullOrEmpty(out) Then Return ToolResult.Message(successMsg)
+                Return ToolResult.Ok(New With {.message = successMsg, .output = out})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

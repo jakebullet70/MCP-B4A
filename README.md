@@ -9,6 +9,22 @@ Exposes 58 tools for compiling and running projects, navigating/editing/linting 
 
 ---
 
+## Response Format
+
+Every tool returns a uniform JSON envelope, so a client can detect success or failure the same way regardless of which tool ran:
+
+```jsonc
+// success
+{ "ok": true, "data": { /* tool-specific result */ }, "warnings": ["…"] }  // warnings omitted when empty
+
+// failure
+{ "ok": false, "error": "what went wrong" }
+```
+
+- `data` holds the result object (or `{ "message": "…" }` for action tools like edits/installs).
+- A failed **build** is `ok: false` with the log under `data` (so you can still read it); infrastructure problems (missing file, adb not found) are also `ok: false`.
+- `b4a_read_layout` returns the layout JSON under `data` — pass **that `data` object** back to `b4a_write_layout`.
+
 ## Tools
 
 ### Configuration
@@ -268,7 +284,7 @@ The server communicates via **stdio** (MCP standard). It does not open any netwo
 dotnet test
 ```
 
-`B4aMcp.Tests` (xUnit) covers the `BalConverter` binary↔JSON roundtrip (lossless), `B4aParser` project parsing, the `BasAnalyzer` outline, the `b4a_lint` checks, `b4a_layout_add_view`/`b4a_diff_layout` roundtrips, the sprite slice→pack flow, and `b4a_add_asset` registration. CI runs build + tests on `windows-latest` via GitHub Actions (`.github/workflows/ci.yml`).
+`B4aMcp.Tests` (xUnit) covers the `BalConverter` binary↔JSON roundtrip (lossless), `B4aParser` project parsing, the `BasAnalyzer` outline, the `b4a_lint` checks, `b4a_layout_add_view`/`b4a_diff_layout` roundtrips, the sprite slice→pack flow, `b4a_add_asset` registration, and the `ToolResult` response envelope. CI runs build + tests on `windows-latest` via GitHub Actions (`.github/workflows/ci.yml`).
 
 ### Project Structure
 
@@ -298,7 +314,8 @@ B4aMcp/
     ├── B4aParser.vb          # .b4a project file parser
     ├── BalConverter.vb        # Binary .bal/.bil ↔ JSON converter
     ├── BasAnalyzer.vb        # B4X structural parser (subs, types, regions, globals)
-    └── CacheManager.vb       # Mtime-based + TTL caching
+    ├── CacheManager.vb       # Mtime-based + TTL caching
+    └── ToolResult.vb         # Uniform { ok, data, warnings } / { ok, error } envelope
 ```
 
 ### Tech Stack

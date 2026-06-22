@@ -24,7 +24,7 @@ Public Class LayoutToolsTests
         Dim balPath = FreshCopy()
         Try
             Dim res = LayoutTools.B4aLayoutAddView(balPath, viewType, "vTest", "Activity", 5, 5, 80, 40, "Hi")
-            Assert.StartsWith("OK", res)
+            Assert.Contains("""ok"": true", res)
 
             ' Read back: the new view and its header must be present, and it must roundtrip.
             Dim conv As New BalConverter(False)

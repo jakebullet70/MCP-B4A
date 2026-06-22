@@ -4,6 +4,7 @@ Imports System.IO
 Imports System.Drawing
 Imports System.Drawing.Imaging
 Imports Newtonsoft.Json
+Imports B4aMcp.Utils
 
 Namespace Tools
     <McpServerToolType>
@@ -33,11 +34,11 @@ Namespace Tools
                     Dim dir = Path.GetDirectoryName(imagePath)
                     Dim pat = Path.GetFileName(imagePath)
                     If String.IsNullOrEmpty(dir) Then dir = Directory.GetCurrentDirectory()
-                    If Not Directory.Exists(dir) Then Return $"Error: directory not found: {dir}"
+                    If Not Directory.Exists(dir) Then Return ToolResult.Fail($"directory not found: {dir}")
                     files = Directory.GetFiles(dir, pat)
-                    If files.Length = 0 Then Return $"No files matched: {imagePath}"
+                    If files.Length = 0 Then Return ToolResult.Message($"No files matched: {imagePath}")
                 Else
-                    If Not File.Exists(imagePath) Then Return $"Error: file not found: {imagePath}"
+                    If Not File.Exists(imagePath) Then Return ToolResult.Fail($"file not found: {imagePath}")
                     files = New String() {imagePath}
                 End If
 
@@ -51,17 +52,17 @@ Namespace Tools
                 Next
 
                 If files.Length = 1 Then
-                    Return JsonConvert.SerializeObject(results(0), Formatting.Indented)
+                    Return ToolResult.Ok(results(0))
                 End If
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .filesProcessed = files.Length,
                     .totalPixelsRemoved = totalPixels,
                     .files = results
-                }, Formatting.Indented)
+                })
 
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -75,15 +76,15 @@ Namespace Tools
             <Description("Output directory (default: <sheet>_frames next to the sheet)")> Optional outputDir As String = "",
             <Description("Base name for frames (default: the sheet filename)")> Optional baseName As String = ""
         ) As String
-            If Not File.Exists(sheetPath) Then Return $"Error: file not found: {sheetPath}"
-            If cols < 1 OrElse rows < 1 Then Return "Error: cols and rows must be >= 1"
+            If Not File.Exists(sheetPath) Then Return ToolResult.Fail($"file not found: {sheetPath}")
+            If cols < 1 OrElse rows < 1 Then Return ToolResult.Fail($"cols and rows must be >= 1")
             Try
                 Dim files As New List(Of String)
                 Dim fw As Integer, fh As Integer
                 Using src = New Bitmap(New MemoryStream(File.ReadAllBytes(sheetPath)))
                     fw = src.Width \ cols
                     fh = src.Height \ rows
-                    If fw < 1 OrElse fh < 1 Then Return $"Error: {cols}x{rows} grid is larger than the {src.Width}x{src.Height} sheet"
+                    If fw < 1 OrElse fh < 1 Then Return ToolResult.Fail($"{cols}x{rows} grid is larger than the {src.Width}x{src.Height} sheet")
 
                     Dim outDir = If(String.IsNullOrWhiteSpace(outputDir),
                                     Path.Combine(Path.GetDirectoryName(sheetPath), Path.GetFileNameWithoutExtension(sheetPath) & "_frames"),
@@ -107,11 +108,11 @@ Namespace Tools
                     Next
                 End Using
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .frameWidth = fw, .frameHeight = fh, .count = files.Count, .files = files
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -128,9 +129,9 @@ Namespace Tools
                 Dim dir = Path.GetDirectoryName(inputGlob)
                 Dim pat = Path.GetFileName(inputGlob)
                 If String.IsNullOrEmpty(dir) Then dir = Directory.GetCurrentDirectory()
-                If Not Directory.Exists(dir) Then Return $"Error: directory not found: {dir}"
+                If Not Directory.Exists(dir) Then Return ToolResult.Fail($"directory not found: {dir}")
                 Dim frameFiles = Directory.GetFiles(dir, pat).OrderBy(Function(f) f, StringComparer.Ordinal).ToArray()
-                If frameFiles.Length = 0 Then Return $"No files matched: {inputGlob}"
+                If frameFiles.Length = 0 Then Return ToolResult.Message($"No files matched: {inputGlob}")
 
                 Dim frames As New List(Of (Name As String, Bmp As Bitmap))
                 Try
@@ -167,17 +168,17 @@ Namespace Tools
                     }, Formatting.Indented)
                     File.WriteAllText(metaPath, metaJson)
 
-                    Return JsonConvert.SerializeObject(New With {
+                    Return ToolResult.Ok(New With {
                         .atlasPath = outputPath, .metadataPath = metaPath,
                         .frameCount = frames.Count, .cellSize = $"{cellW}x{cellH}", .grid = $"{numCols}x{numRows}"
-                    }, Formatting.Indented)
+                    })
                 Finally
                     For Each fr In frames
                         fr.Bmp.Dispose()
                     Next
                 End Try
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

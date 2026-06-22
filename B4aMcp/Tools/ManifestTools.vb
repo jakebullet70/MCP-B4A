@@ -11,18 +11,18 @@ Namespace Tools
         Public Shared Function B4aReadManifest(
             <Description("Full path to the .b4a project file")> projectPath As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: File must have .b4a extension"
+                Return ToolResult.Fail("File must have .b4a extension")
             End If
             Try
                 Dim block = B4aParser.GetManifestBlock(projectPath)
                 If String.IsNullOrWhiteSpace(block) Then
-                    Return "No Manifest Editor block found in this project."
+                    Return ToolResult.Message("No Manifest Editor block found in this project.")
                 End If
-                Return block
+                Return ToolResult.Ok(New With {.manifest = block})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -31,15 +31,15 @@ Namespace Tools
             <Description("Full path to the .b4a project file")> projectPath As String,
             <Description("New content for the Manifest Editor block (lines between #Region Manifest Editor and #End Region)")> manifestContent As String
         ) As String
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: File must have .b4a extension"
+                Return ToolResult.Fail("File must have .b4a extension")
             End If
             Try
                 B4aParser.WriteManifestBlock(projectPath, manifestContent)
-                Return $"OK: backup saved as {projectPath}.bak"
+                Return ToolResult.Message($"backup saved as {projectPath}.bak")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

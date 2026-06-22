@@ -3,6 +3,7 @@ Imports System.ComponentModel
 Imports System.Diagnostics
 Imports System.IO
 Imports Newtonsoft.Json
+Imports Newtonsoft.Json.Linq
 Imports B4aMcp.Utils
 
 Namespace Tools
@@ -15,19 +16,19 @@ Namespace Tools
             <Description("Full path to the .b4a project file")> projectPath As String,
             <Description("Build mode: 'release' (default, signed APK), 'debug' (unsigned APK), 'bundle' (signed AAB)")> Optional mode As String = "release"
         ) As Task(Of String)
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: File must have .b4a extension"
+                Return ToolResult.Fail("File must have .b4a extension")
             End If
 
             Dim cfg = AppConfig.Load()
             If String.IsNullOrEmpty(cfg.B4aPath) Then
-                Return "Error: b4aPath is not configured. Use b4a_set_config(key='b4aPath', value='C:\\B4A')"
+                Return ToolResult.Fail("b4aPath is not configured. Use b4a_set_config(key='b4aPath', value='C:\B4A')")
             End If
 
             Dim builderPath = Path.Combine(cfg.B4aPath, "B4ABuilder.exe")
             If Not File.Exists(builderPath) Then
-                Return $"Error: B4ABuilder.exe not found at {builderPath}"
+                Return ToolResult.Fail($"B4ABuilder.exe not found at {builderPath}")
             End If
 
             Dim baseFolder = Path.GetDirectoryName(projectPath)
@@ -73,23 +74,22 @@ Namespace Tools
                 Dim log = output.ToString()
                 CacheManager.Store(LastBuildLogKey, log)
 
-                Dim result As New System.Text.StringBuilder()
-                result.AppendLine($"Build completed (exit code {exitCode}):")
-                result.AppendLine(log)
+                Dim succeeded = exitCode = 0 AndAlso log.IndexOf("Completed successfully", StringComparison.OrdinalIgnoreCase) >= 0
 
-                ' Append output APK/AAB path if build succeeded
-                If exitCode = 0 Then
+                Dim outputPath As String = Nothing
+                If succeeded Then
                     Dim projectName = Path.GetFileNameWithoutExtension(projectPath)
                     Dim ext = If(normalizedMode = "bundle", ".aab", ".apk")
-                    Dim outputPath = Path.Combine(baseFolder, "Objects", projectName & ext)
-                    If File.Exists(outputPath) Then
-                        result.AppendLine($"Output: {outputPath}")
-                    End If
+                    Dim candidate = Path.Combine(baseFolder, "Objects", projectName & ext)
+                    If File.Exists(candidate) Then outputPath = candidate
                 End If
 
-                Return result.ToString().TrimEnd()
+                If Not succeeded Then
+                    Return ToolResult.Fail($"Build failed (exit code {exitCode})", New With {.exitCode = exitCode, .log = log})
+                End If
+                Return ToolResult.Ok(New With {.exitCode = exitCode, .outputPath = outputPath, .log = log})
             Catch ex As Exception
-                Return $"Error starting build: {ex.Message}"
+                Return ToolResult.Fail($"Error starting build: {ex.Message}")
             End Try
         End Function
 
@@ -102,30 +102,28 @@ Namespace Tools
             <Description("ADB device serial (optional, uses first device if not specified)")> Optional deviceSerial As String = "",
             <Description("Build mode: 'release' (default) or 'debug'")> Optional mode As String = "release"
         ) As Task(Of String)
-            ' Build
-            Dim buildResult = Await B4aBuild(projectPath, mode)
+            ' Build — propagate any build failure envelope as-is (carries the log).
+            Dim buildJson = Await B4aBuild(projectPath, mode)
+            Dim bo = JObject.Parse(buildJson)
+            If Not bo("ok").Value(Of Boolean)() Then Return buildJson
 
-            ' Check for failure (exit code != 0 means "Completed successfully" won't appear)
-            If Not buildResult.Contains("Completed successfully") Then
-                Return $"Build FAILED — install skipped.{Environment.NewLine}{buildResult}"
-            End If
-
-            ' Extract APK path from build output
-            Dim apkPath As String = Nothing
-            For Each line In buildResult.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
-                If line.StartsWith("Output:") Then
-                    apkPath = line.Substring("Output:".Length).Trim()
-                    Exit For
-                End If
-            Next
-
+            Dim apkPath = bo("data")("outputPath")?.ToString()
             If String.IsNullOrEmpty(apkPath) OrElse Not File.Exists(apkPath) Then
-                Return $"Build succeeded but APK path not found in output.{Environment.NewLine}{buildResult}"
+                Return ToolResult.Fail("Build succeeded but the APK path could not be located", bo("data"))
             End If
 
-            ' Install
-            Dim installResult = Await AdbTools.B4aInstallApk(apkPath, deviceSerial)
-            Return $"{buildResult}{Environment.NewLine}--- Install ---{Environment.NewLine}{installResult}"
+            ' Install — surface install failure clearly.
+            Dim installJson = Await AdbTools.B4aInstallApk(apkPath, deviceSerial)
+            Dim io = JObject.Parse(installJson)
+            If Not io("ok").Value(Of Boolean)() Then
+                Return ToolResult.Fail($"Build succeeded but install failed: {io("error")}", New With {.apkPath = apkPath})
+            End If
+
+            Return ToolResult.Ok(New With {
+                .apkPath = apkPath,
+                .buildExitCode = bo("data")("exitCode").Value(Of Integer)(),
+                .install = io("data")
+            })
         End Function
 
         <McpServerTool, Description(
@@ -139,14 +137,13 @@ Namespace Tools
             <Description("Seconds to watch logcat after launch (default 6, max 30)")> Optional watchSeconds As Integer = 6,
             <Description("ADB device serial (optional)")> Optional deviceSerial As String = ""
         ) As Task(Of String)
-            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not File.Exists(projectPath) Then Return ToolResult.Fail($"File not found: {projectPath}")
             watchSeconds = Math.Min(Math.Max(watchSeconds, 1), 30)
 
-            ' 1. Build + install
-            Dim buildInstall = Await B4aBuildAndInstall(projectPath, deviceSerial, mode)
-            If buildInstall.StartsWith("Build FAILED") OrElse buildInstall.Contains("install skipped") Then
-                Return buildInstall
-            End If
+            ' 1. Build + install — propagate failure envelope as-is.
+            Dim biJson = Await B4aBuildAndInstall(projectPath, deviceSerial, mode)
+            Dim bi = JObject.Parse(biJson)
+            If Not bi("ok").Value(Of Boolean)() Then Return biJson
 
             ' 2. Resolve package name from the project
             Dim packageName As String
@@ -156,16 +153,17 @@ Namespace Tools
                 packageName = Nothing
             End Try
             If String.IsNullOrEmpty(packageName) Then
-                Return $"{buildInstall}{Environment.NewLine}--- Run ---{Environment.NewLine}Built and installed, but could not read the package name from the project to launch it."
+                Return ToolResult.Ok(New With {.installed = True, .launched = False, .note = "Built and installed, but could not read the package name from the project to launch it."})
             End If
 
             ' 3. Clear logcat, launch, then watch
             Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}logcat -c", 10_000)
-            Dim launch = Await DeviceTools.B4aLaunchApp(packageName, activity, deviceSerial)
+            Dim launchJson = Await DeviceTools.B4aLaunchApp(packageName, activity, deviceSerial)
+            Dim launched = JObject.Parse(launchJson)("ok").Value(Of Boolean)()
             Dim watched = Await AdbRunner.RunTextFor($"{AdbRunner.DeviceArg(deviceSerial)}logcat AndroidRuntime:E B4A:* System.err:W *:S", watchSeconds * 1000)
 
             ' 4. Detect a crash in the captured window
-            Dim crash As String = "none detected"
+            Dim crash As Object = Nothing
             If watched IsNot Nothing Then
                 Dim wLines = watched.Split(New String() {Environment.NewLine}, StringSplitOptions.RemoveEmptyEntries)
                 Dim m = wLines.Select(Function(l) Text.RegularExpressions.Regex.Match(l, "Error occurred on line:\s*(\d+)\s*\(([^)]*)\)", Text.RegularExpressions.RegexOptions.IgnoreCase)) _
@@ -173,25 +171,26 @@ Namespace Tools
                 If m IsNot Nothing AndAlso m.Success Then
                     crash = $"B4A error on line {m.Groups(1).Value} ({m.Groups(2).Value.Trim()})"
                 ElseIf wLines.Any(Function(l) l.IndexOf("FATAL EXCEPTION", StringComparison.OrdinalIgnoreCase) >= 0) Then
-                    crash = "FATAL EXCEPTION — see captured log below"
+                    crash = "FATAL EXCEPTION — see capturedLog"
                 End If
             End If
 
-            Dim sb As New System.Text.StringBuilder()
-            sb.AppendLine(buildInstall)
-            sb.AppendLine($"--- Run ({packageName}{activity}) ---")
-            sb.AppendLine($"Launch: {launch}")
-            sb.AppendLine($"Crash: {crash}")
-            sb.AppendLine($"--- Watched {watchSeconds}s ---")
-            sb.AppendLine(If(watched, "(no adb)"))
-            Return sb.ToString().TrimEnd()
+            Return ToolResult.Ok(New With {
+                .package = packageName,
+                .activity = activity,
+                .installed = True,
+                .launched = launched,
+                .crash = If(crash, "none detected"),
+                .watchedSeconds = watchSeconds,
+                .capturedLog = If(watched, "(no adb)")
+            })
         End Function
 
         <McpServerTool, Description("Returns the log from the last b4a_build call")>
         Public Shared Function B4aGetBuildLog() As String
             Dim log As String = Nothing
-            If CacheManager.TryGet(Of String)(LastBuildLogKey, log) Then Return log
-            Return "No build log available. Run b4a_build first."
+            If CacheManager.TryGet(Of String)(LastBuildLogKey, log) Then Return ToolResult.Ok(New With {.log = log})
+            Return ToolResult.Fail("No build log available. Run b4a_build first.")
         End Function
 
         <McpServerTool, Description(
@@ -205,7 +204,7 @@ Namespace Tools
             If String.IsNullOrEmpty(log) Then
                 Dim cached As String = Nothing
                 If Not CacheManager.TryGet(Of String)(LastBuildLogKey, cached) Then
-                    Return "No build log available. Run b4a_build first (or pass logText)."
+                    Return ToolResult.Fail("No build log available. Run b4a_build first (or pass logText).")
                 End If
                 log = cached
             End If
@@ -244,11 +243,11 @@ Namespace Tools
             Next
 
             Dim succeeded = log.IndexOf("Completed successfully", StringComparison.OrdinalIgnoreCase) >= 0
-            Return JsonConvert.SerializeObject(New With {
+            Return ToolResult.Ok(New With {
                 .success = succeeded,
                 .errorCount = errors.Count,
                 .errors = errors
-            }, Formatting.Indented)
+            })
         End Function
 
         <McpServerTool, Description("Returns the signing configuration from B4A IDE settings: keystore path, alias, and whether signing is fully configured. Does NOT expose the password.")>
@@ -264,15 +263,15 @@ Namespace Tools
 
                 Dim keyFileExists = Not String.IsNullOrEmpty(keyFile) AndAlso File.Exists(keyFile)
 
-                Return JsonConvert.SerializeObject(New With {
+                Return ToolResult.Ok(New With {
                     .keyFile = If(keyFile, ""),
                     .keyFileExists = keyFileExists,
                     .keyAlias = If(keyAlias, ""),
                     .hasPassword = Not String.IsNullOrEmpty(keyPassword),
                     .signingConfigured = keyFileExists AndAlso Not String.IsNullOrEmpty(keyAlias) AndAlso Not String.IsNullOrEmpty(keyPassword)
-                }, Formatting.Indented)
+                })
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

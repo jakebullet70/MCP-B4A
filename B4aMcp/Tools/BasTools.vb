@@ -3,6 +3,7 @@ Imports System.ComponentModel
 Imports System.IO
 Imports Newtonsoft.Json
 Imports Newtonsoft.Json.Linq
+Imports B4aMcp.Utils
 
 Namespace Tools
     <McpServerToolType>
@@ -17,9 +18,9 @@ Namespace Tools
         Public Shared Function B4aReadBas(
             <Description("Full path to the .bas or .b4a file")> basPath As String
         ) As String
-            If Not File.Exists(basPath) Then Return $"Error: File not found: {basPath}"
+            If Not File.Exists(basPath) Then Return ToolResult.Fail($"File not found: {basPath}")
             If Not IsB4aSource(basPath) Then
-                Return "Error: File must have .bas or .b4a extension"
+                Return ToolResult.Fail("File must have .bas or .b4a extension")
             End If
             Try
                 Dim lines = File.ReadAllLines(basPath)
@@ -27,9 +28,9 @@ Namespace Tools
                 For i = 0 To lines.Length - 1
                     sb.AppendLine($"{i + 1,5}| {lines(i)}")
                 Next
-                Return sb.ToString()
+                Return ToolResult.Ok(sb.ToString())
             Catch ex As Exception
-                Return $"Error reading file: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -40,12 +41,12 @@ Namespace Tools
             <Description("Replacement text")> new_text As String,
             <Description("If true, replace ALL occurrences; if false (default), the old_text must be unique")> Optional replace_all As Boolean = False
         ) As String
-            If Not File.Exists(basPath) Then Return $"Error: File not found: {basPath}"
+            If Not File.Exists(basPath) Then Return ToolResult.Fail($"File not found: {basPath}")
             If Not IsB4aSource(basPath) Then
-                Return "Error: File must have .bas or .b4a extension"
+                Return ToolResult.Fail("File must have .bas or .b4a extension")
             End If
-            If String.IsNullOrEmpty(old_text) Then Return "Error: old_text cannot be empty"
-            If old_text = new_text Then Return "Error: old_text and new_text are identical"
+            If String.IsNullOrEmpty(old_text) Then Return ToolResult.Fail("old_text cannot be empty")
+            If old_text = new_text Then Return ToolResult.Fail("old_text and new_text are identical")
 
             Try
                 Dim content = File.ReadAllText(basPath)
@@ -58,11 +59,11 @@ Namespace Tools
                 Dim count = CountOccurrences(normContent, normOld)
 
                 If count = 0 Then
-                    Return "Error: old_text not found in file. Make sure whitespace and indentation match exactly."
+                    Return ToolResult.Fail("old_text not found in file. Make sure whitespace and indentation match exactly.")
                 End If
 
                 If Not replace_all AndAlso count > 1 Then
-                    Return $"Error: old_text found {count} times. Provide more context to make it unique, or set replace_all=true."
+                    Return ToolResult.Fail($"old_text found {count} times. Provide more context to make it unique, or set replace_all=true.")
                 End If
 
                 ' Create backup
@@ -85,9 +86,9 @@ Namespace Tools
                 File.WriteAllText(basPath, result)
 
                 Dim replacements = If(replace_all, count, 1)
-                Return $"OK: {replacements} replacement(s) made. Backup saved as {basPath}.bak"
+                Return ToolResult.Message($"{replacements} replacement(s) made. Backup saved as {basPath}.bak")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -102,16 +103,16 @@ Namespace Tools
             <Description("Full path to the .bas or .b4a file")> basPath As String,
             <Description("JSON array of edit objects, each with old_text, new_text, and optional replace_all (default false)")> edits As String
         ) As String
-            If Not File.Exists(basPath) Then Return $"Error: File not found: {basPath}"
-            If Not IsB4aSource(basPath) Then Return "Error: File must have .bas or .b4a extension"
+            If Not File.Exists(basPath) Then Return ToolResult.Fail($"File not found: {basPath}")
+            If Not IsB4aSource(basPath) Then Return ToolResult.Fail("File must have .bas or .b4a extension")
 
             Dim ops As JArray
             Try
                 ops = JArray.Parse(edits)
             Catch ex As Exception
-                Return $"Error: edits is not a valid JSON array — {ex.Message}"
+                Return ToolResult.Fail($"edits is not a valid JSON array — {ex.Message}")
             End Try
-            If ops.Count = 0 Then Return "Error: edits array is empty"
+            If ops.Count = 0 Then Return ToolResult.Fail("edits array is empty")
 
             Try
                 Dim content = File.ReadAllText(basPath)
@@ -121,18 +122,18 @@ Namespace Tools
                 ' Validate + apply every edit in memory first (transactional)
                 For i = 0 To ops.Count - 1
                     Dim op = TryCast(ops(i), JObject)
-                    If op Is Nothing Then Return $"Error: edit #{i + 1} is not an object"
+                    If op Is Nothing Then Return ToolResult.Fail($"edit #{i + 1} is not an object")
                     Dim oldText = If(op("old_text")?.ToString(), Nothing)
                     Dim newText = If(op("new_text")?.ToString(), "")
                     Dim replaceAll = op("replace_all") IsNot Nothing AndAlso op("replace_all").ToObject(Of Boolean)()
 
-                    If String.IsNullOrEmpty(oldText) Then Return $"Error: edit #{i + 1} has empty old_text"
+                    If String.IsNullOrEmpty(oldText) Then Return ToolResult.Fail($"edit #{i + 1} has empty old_text")
                     Dim normOld = oldText.Replace(vbCrLf, vbLf)
                     Dim normNew = newText.Replace(vbCrLf, vbLf)
 
                     Dim count = CountOccurrences(work, normOld)
-                    If count = 0 Then Return $"Error: edit #{i + 1} old_text not found (whitespace/indentation must match exactly). No changes written."
-                    If Not replaceAll AndAlso count > 1 Then Return $"Error: edit #{i + 1} old_text found {count} times — add context or set replace_all=true. No changes written."
+                    If count = 0 Then Return ToolResult.Fail($"edit #{i + 1} old_text not found (whitespace/indentation must match exactly). No changes written.")
+                    If Not replaceAll AndAlso count > 1 Then Return ToolResult.Fail($"edit #{i + 1} old_text found {count} times — add context or set replace_all=true. No changes written.")
 
                     If replaceAll Then
                         work = work.Replace(normOld, normNew)
@@ -145,9 +146,9 @@ Namespace Tools
                 If usedCrLf Then work = work.Replace(vbLf, vbCrLf)
                 File.Copy(basPath, basPath & ".bak", overwrite:=True)
                 File.WriteAllText(basPath, work)
-                Return $"OK: {ops.Count} edit(s) applied. Backup saved as {basPath}.bak"
+                Return ToolResult.Message($"{ops.Count} edit(s) applied. Backup saved as {basPath}.bak")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -163,10 +164,10 @@ Namespace Tools
             <Description("Overwrite if the file already exists (default false)")> Optional overwrite As Boolean = False
         ) As String
             If Not modulePath.EndsWith(".bas", StringComparison.OrdinalIgnoreCase) Then
-                Return "Error: modulePath must end with .bas"
+                Return ToolResult.Fail("modulePath must end with .bas")
             End If
             If File.Exists(modulePath) AndAlso Not overwrite Then
-                Return $"Error: File already exists: {modulePath} (set overwrite=true to replace)"
+                Return ToolResult.Fail($"File already exists: {modulePath} (set overwrite=true to replace)")
             End If
 
             Dim typeName As String
@@ -193,7 +194,7 @@ Namespace Tools
                     body = "Sub Class_Globals" & vbCrLf & vbCrLf & "End Sub" & vbCrLf & vbCrLf &
                            "Public Sub Initialize" & vbCrLf & vbCrLf & "End Sub" & vbCrLf
                 Case Else
-                    Return $"Error: unknown moduleType '{moduleType}'. Use class | code | activity | service."
+                    Return ToolResult.Fail($"unknown moduleType '{moduleType}'. Use class | code | activity | service.")
             End Select
 
             Try
@@ -207,9 +208,9 @@ Namespace Tools
                     registration = RegisterModuleInProject(projectPath, modulePath)
                 End If
 
-                Return $"OK: created {typeName} module at {modulePath}. {registration}"
+                Return ToolResult.Message($"created {typeName} module at {modulePath}. {registration}")
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 

@@ -121,8 +121,10 @@ build higher-level layout tooling on.
 - Sprite slice/pack pipeline (`b4a_sprite_slice`, `b4a_sprite_pack`) + asset registration (`b4a_add_asset`) (§4)
 - Emulator control (`b4a_list_emulators`, `b4a_start_emulator`) + CI pipeline (GitHub Actions, windows-latest) (§3, §5)
 
+**Structured-error envelope** ✅ *done*
+- All ~58 tools now return a uniform `{ ok, data, warnings }` / `{ ok, error }` envelope (`Utils/ToolResult.vb`). Orchestrators (`b4a_build_and_install`, `b4a_run`) parse sub-tool envelopes instead of string-matching. `ToolResult` unit tests added.
+
 **Remaining / future**
-- Structured-error envelope across all tools (still deferred — would change the response contract `b4a_build_and_install` relies on; do as a deliberate one-pass migration when desired)
 - `b4a_bump_version` (§6), `b4a_module_graph` (§1), `b4a_insert_sub`/`b4a_edit_sub` (§2) — nice-to-haves not yet scheduled
 
 ---

@@ -14,15 +14,15 @@ Namespace Tools
             "Use when no physical device is connected and you need to start one for b4a_install/run/screenshot.")>
         Public Shared Async Function B4aListEmulators() As Task(Of String)
             Dim emu = FindEmulator()
-            If emu Is Nothing Then Return "Error: emulator.exe not found. Install the Android SDK 'emulator' package, or no AVDs are configured."
+            If emu Is Nothing Then Return ToolResult.Fail("emulator.exe not found. Install the Android SDK 'emulator' package, or no AVDs are configured.")
             Try
                 Dim out = Await RunCaptured(emu, "-list-avds", 15_000)
                 Dim avds = out.Split(New String() {Environment.NewLine, vbLf}, StringSplitOptions.RemoveEmptyEntries) _
                               .Where(Function(l) Not l.StartsWith("INFO") AndAlso Not l.Contains(":") AndAlso l.Trim().Length > 0) _
                               .Select(Function(l) l.Trim()).ToList()
-                Return JsonConvert.SerializeObject(New With {.emulatorPath = emu, .count = avds.Count, .avds = avds}, Formatting.Indented)
+                Return ToolResult.Ok(New With {.emulatorPath = emu, .count = avds.Count, .avds = avds})
             Catch ex As Exception
-                Return $"Error: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
@@ -33,18 +33,18 @@ Namespace Tools
             <Description("AVD name (from b4a_list_emulators)")> avdName As String,
             <Description("Extra emulator flags (optional), e.g. '-no-snapshot -gpu host'")> Optional extraArgs As String = ""
         ) As String
-            If String.IsNullOrWhiteSpace(avdName) Then Return "Error: avdName is required"
+            If String.IsNullOrWhiteSpace(avdName) Then Return ToolResult.Fail("avdName is required")
             Dim emu = FindEmulator()
-            If emu Is Nothing Then Return "Error: emulator.exe not found."
+            If emu Is Nothing Then Return ToolResult.Fail("emulator.exe not found.")
             Try
                 Process.Start(New ProcessStartInfo() With {
                     .FileName = emu,
                     .Arguments = $"-avd {avdName} {extraArgs}".Trim(),
                     .UseShellExecute = True
                 })
-                Return $"OK: starting emulator '{avdName}'. Boot takes ~10–60s — poll b4a_list_devices until it shows 'device'."
+                Return ToolResult.Message($"starting emulator '{avdName}'. Boot takes ~10–60s — poll b4a_list_devices until it shows 'device'.")
             Catch ex As Exception
-                Return $"Error launching emulator: {ex.Message}"
+                Return ToolResult.Fail(ex.Message)
             End Try
         End Function
 
