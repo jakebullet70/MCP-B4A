@@ -78,10 +78,13 @@ build higher-level layout tooling on.
 
 ## 5. Cross-Platform & Quality (infrastructure)
 
+> **Note:** the server is **Windows-only by design** — the B4A IDE and `B4ABuilder.exe`
+> only run on Windows and the server always runs alongside them. No cross-platform work is
+> planned; the `System.Drawing.Common` usage (and its CA1416 warnings) is acceptable as-is.
+
 | Feature | Effort | Why |
 |---------|--------|-----|
-| **Cross-platform image handling** | L | `DeviceTools`/`SpriteTools` depend on `System.Drawing.Common`, which is **Windows-only** on .NET 8. Migrate to **ImageSharp** to enable macOS/Linux hosts (B4A IDE is Windows, but agents/CI may not be). |
-| **Shared ADB helper** | S | `FindAdb()` is duplicated verbatim in `AdbTools.vb` and `DeviceTools.vb`, and the `ProcessStartInfo` + async-read boilerplate is copy-pasted across ~7 tools. Extract a `Utils/AdbRunner.vb`. |
+| **Shared ADB helper** ✅ | S | *Done.* `FindAdb()` + `ProcessStartInfo`/async-read boilerplate consolidated into `Utils/AdbRunner.vb`. |
 | **Automated tests** | M | No tests today. Add unit tests for `B4aParser`, `BalConverter` (roundtrip), and `ValidateAndFixEditTexts`. The binary roundtrip especially needs a regression net. |
 | **CI pipeline** | S | GitHub Actions: `dotnet build` + tests + `dotnet publish` on tag. |
 | **Structured errors** | M | Tools return free-text `"Error: ..."` strings; agents must string-match (e.g. `b4a_build_and_install` greps for `"Completed successfully"`). Standardize a JSON `{ok, error, data}` envelope. |
@@ -100,24 +103,24 @@ build higher-level layout tooling on.
 
 ## Suggested Phasing
 
-**Phase 1 — Parity & daily-driver wins (do first)**
+**Phase 1 — Parity & daily-driver wins** ✅ *done*
 - `b4a_outline`, `b4a_find_symbol` (§1)
 - `b4a_multi_edit_bas`, `b4a_create_module` (§2)
 - `b4a_tail_log`, `b4a_get_last_crash` (§3)
 - `b4a_doctor`, `b4a_open_ide` (§6)
-- Shared ADB helper + structured-error envelope (§5)
+- Shared ADB helper ✅ (structured-error envelope deferred — would change the response contract of all existing tools; do as a deliberate pass)
 
-**Phase 2 — Refactor safety & robustness**
+**Phase 2 — Refactor safety & robustness** ✅ *done*
 - `b4a_rename_symbol`, `b4a_lint`, `b4a_parse_build_errors` (§1–2)
-- `b4a_run` one-shot loop, app lifecycle tools (§3)
+- `b4a_run` one-shot loop, app lifecycle tools — `b4a_uninstall`/`b4a_clear_data`/`b4a_stop_app`/`b4a_grant_permission` (§3)
 - `b4a_clone_layout`, `b4a_create_layout`, `b4a_check_libraries` (§4, §6)
-- Automated tests for parser + BalConverter roundtrip (§5)
+- Automated tests (xUnit) — `B4aParser`, `BalConverter` roundtrip, `BasAnalyzer`, `b4a_lint` (§5)
 
-**Phase 3 — Reach & polish**
-- Cross-platform image migration to ImageSharp (§5)
+**Phase 3 — Reach & polish** ← *next*
 - Layout view manipulation + responsive audit (§4)
 - Sprite slice/pack pipeline (§4)
 - Emulator control, CI pipeline (§3, §5)
+- Structured-error envelope across all tools (deferred from Phase 1 — deliberate one-pass migration)
 
 ---
 

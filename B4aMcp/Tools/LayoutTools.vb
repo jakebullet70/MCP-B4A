@@ -104,6 +104,68 @@ Namespace Tools
             End Try
         End Function
 
+        <McpServerTool, Description(
+            "Duplicates a layout file (.bal/.bil) to a new path — a quick way to start a new layout from an existing one. " &
+            "The layout's name in B4A is its filename, so the copy becomes a new layout. Source and destination must share the extension.")>
+        Public Shared Function B4aCloneLayout(
+            <Description("Full path to the source .bal/.bil layout")> sourcePath As String,
+            <Description("Full path for the new layout file (same extension as source)")> destPath As String,
+            <Description("Overwrite the destination if it exists (default false)")> Optional overwrite As Boolean = False
+        ) As String
+            If Not File.Exists(sourcePath) Then Return $"Error: Source not found: {sourcePath}"
+            Dim srcExt = Path.GetExtension(sourcePath).ToLowerInvariant()
+            Dim dstExt = Path.GetExtension(destPath).ToLowerInvariant()
+            If srcExt <> ".bal" AndAlso srcExt <> ".bil" Then Return "Error: Source must be .bal or .bil"
+            If dstExt <> srcExt Then Return $"Error: Destination extension ({dstExt}) must match source ({srcExt})"
+            If File.Exists(destPath) AndAlso Not overwrite Then Return $"Error: Destination exists: {destPath} (set overwrite=true)"
+            Try
+                Dim dir = Path.GetDirectoryName(destPath)
+                If Not String.IsNullOrEmpty(dir) Then Directory.CreateDirectory(dir)
+                File.Copy(sourcePath, destPath, overwrite)
+                Return $"OK: cloned to {destPath}"
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
+        <McpServerTool, Description(
+            "Creates a new, minimal valid layout file (.bal/.bil) containing just an empty Activity at the given variant size. " &
+            "Use this to scaffold a layout, then add views with b4a_write_layout. Default variant is 600x360 @ scale 1.")>
+        Public Shared Function B4aCreateLayout(
+            <Description("Full path for the new .bal/.bil layout file")> layoutPath As String,
+            <Description("Design variant width in pixels (default 600)")> Optional width As Integer = 600,
+            <Description("Design variant height in pixels (default 360)")> Optional height As Integer = 360,
+            <Description("Design variant scale (default 1.0)")> Optional scale As Double = 1.0,
+            <Description("Overwrite if the file already exists (default false)")> Optional overwrite As Boolean = False
+        ) As String
+            Dim ext = Path.GetExtension(layoutPath).ToLowerInvariant()
+            If ext <> ".bal" AndAlso ext <> ".bil" Then Return "Error: File must have .bal or .bil extension"
+            If File.Exists(layoutPath) AndAlso Not overwrite Then Return $"Error: File exists: {layoutPath} (set overwrite=true)"
+            If width <= 0 OrElse height <= 0 Then Return "Error: width and height must be positive"
+
+            Try
+                Dim scaleStr = scale.ToString(Globalization.CultureInfo.InvariantCulture)
+                Dim tpl = "{""LayoutHeader"":{""Version"":5,""GridSize"":10,""ControlsHeaders"":[{""Name"":""Activity"",""JavaType"":"".ActivityWrapper"",""DesignerType"":""Activity""}],""Files"":[],""DesignerScript"":[""'All variants script\nAutoScaleAll"",""'Variant specific script\n""]}," &
+                          $"""Variants"":[{{""Scale"":{scaleStr},""Width"":{width},""Height"":{height}}}]," &
+                          """Data"":{""csType"":""Dbasic.Designer.MetaActivity"",""type"":"".ActivityWrapper"",""animationDuration"":400,""drawable"":{""csType"":""Dbasic.Designer.Drawable.ColorDrawable"",""type"":"".drawable.ColorDrawable"",""color"":{""ValueType"":6,""Value"":""0xFFF0F8FF""}},""eventName"":""Activity"",""fullScreen"":false,""includeTitle"":true,""javaType"":"".ActivityWrapper"",""name"":""Activity"",""parent"":"""",""tag"":"""",""title"":""Activity"",""titleColor"":{""ValueType"":6,""Value"":""0xFFF0F8FF""},""visible"":true,""variant0"":{""left"":100,""top"":100,""width"":100,""height"":100,""hanchor"":0,""vanchor"":0},"":kids"":{}}," &
+                          """FontAwesome"":false,""MaterialIcons"":false}"
+
+                Dim json = JObject.Parse(tpl)
+                If File.Exists(layoutPath) Then File.Copy(layoutPath, layoutPath & ".bak", overwrite:=True)
+                Dim dir = Path.GetDirectoryName(layoutPath)
+                If Not String.IsNullOrEmpty(dir) Then Directory.CreateDirectory(dir)
+
+                Dim converter = New BalConverter(ext = ".bil")
+                Using stream = File.Create(layoutPath)
+                    converter.ConvertJsonToBalInMemory(json, stream)
+                End Using
+                CacheManager.Invalidate(layoutPath)
+                Return $"OK: created {width}x{height} layout at {layoutPath}. Add views with b4a_write_layout."
+            Catch ex As Exception
+                Return $"Error creating layout: {ex.Message}"
+            End Try
+        End Function
+
         ''' <summary>
         ''' Validates EditText controls in layout JSON and injects missing required properties.
         ''' B4A runtime (EditTextWrapper.build) crashes with NullPointerException if 'password' is missing.

@@ -5,7 +5,7 @@
 
 Bridges [Claude Code](https://claude.ai/claude-code) (and any MCP-compatible client) with the [B4A](https://www.b4x.com/b4a.html) (Basic4Android) ecosystem.
 
-Exposes 31 tools for compiling projects, reading/editing source modules, reading/modifying layouts, exploring libraries, deploying APKs, debugging via ADB, doing live visual UI verification directly on the device, and cleaning up sprite PNG artifacts — all without leaving your AI coding assistant.
+Exposes 50 tools for compiling and running projects, navigating/editing/linting source modules, reading/modifying/creating layouts, exploring libraries, deploying APKs, managing app lifecycle and debugging via ADB, doing live visual UI verification directly on the device, and cleaning up sprite PNG artifacts — all without leaving your AI coding assistant.
 
 ---
 
@@ -24,7 +24,9 @@ Exposes 31 tools for compiling projects, reading/editing source modules, reading
 |------|-------------|
 | `b4a_build` | Compiles a B4A project via B4ABuilder.exe (release/debug/bundle) |
 | `b4a_build_and_install` | Compiles **and** installs in one step — equivalent to `b4a_build` + `b4a_install_apk` |
+| `b4a_run` | One-shot run loop: build → install → clear logcat → launch → watch logcat for a few seconds and report any crash. Fastest way to confirm a change actually runs on device. |
 | `b4a_get_build_log` | Returns the log from the last build |
+| `b4a_parse_build_errors` | Parses the last build log into structured errors (`{module, line, message, source}`) instead of a single grep'd line. Pass `logText` to parse a specific log. |
 | `b4a_get_signing_info` | Returns keystore path, alias, and signing status (passwords are never exposed) |
 | `b4a_install_apk` | Installs an APK on a connected device via ADB |
 
@@ -44,6 +46,8 @@ Exposes 31 tools for compiling projects, reading/editing source modules, reading
 | `b4a_read_layout` | Converts binary .bal/.bil to JSON |
 | `b4a_write_layout` | Writes JSON back to .bal/.bil (with validation and backup) |
 | `b4a_list_layouts` | Lists all layout files in a project directory |
+| `b4a_clone_layout` | Duplicates a layout file to a new path — a quick way to start a new layout from an existing one (the filename is the layout name). |
+| `b4a_create_layout` | Creates a new, minimal valid layout containing an empty Activity at a given variant size — scaffold, then add views with `b4a_write_layout`. |
 
 ### Libraries
 
@@ -52,6 +56,16 @@ Exposes 31 tools for compiling projects, reading/editing source modules, reading
 | `b4a_list_libraries` | Lists available B4A libraries with version info |
 | `b4a_get_library_docs` | Returns formatted method/property/event documentation for a library |
 | `b4a_search_library` | Searches across all library documentation |
+| `b4a_check_libraries` | Cross-checks a project's referenced libraries against those installed; reports which are **missing** (would fail the build) and which resolved (with version). Run before building. |
+
+### Code Intelligence
+
+| Tool | Description |
+|------|-------------|
+| `b4a_outline` | Returns the structural outline of a `.bas`/`.b4a`: all Subs (name, params, return type, visibility, line range), Type declarations, `#Region` blocks, and module-level globals — navigate a module without reading the whole file |
+| `b4a_find_symbol` | Searches every module in a project for a symbol (Sub, Type, or global): where it is **defined** and every line that **references** it. Case-insensitive (B4A is too), making it the safe way to scope a rename |
+| `b4a_rename_symbol` | Project-wide case-insensitive rename of a symbol. **Defaults to a dry run** that lists every site that would change; set `apply=true` to write (one `.bak` per modified file). |
+| `b4a_lint` | Static checks for the documented gotchas: reserved-word identifiers (Is/ATan2/Rnd), a local/parameter shadowing a module global, `MediaPlayer` usage, `Colors.R/G/B/A()`, and `BitmapData` (should be `BitmapsData`). Accepts a `.bas`, a `.b4a`, or a directory. |
 
 ### Source Modules
 
@@ -59,6 +73,8 @@ Exposes 31 tools for compiling projects, reading/editing source modules, reading
 |------|-------------|
 | `b4a_read_bas` | Reads a `.bas` source module and returns its content with line numbers |
 | `b4a_edit_bas` | Search-and-replace edit on a `.bas` file. Matches exact text (including indentation), normalises line endings, creates `.bak` backup. Rejects ambiguous matches unless `replace_all=true`. |
+| `b4a_multi_edit_bas` | Applies an ordered list of edits in a **single transaction** with one `.bak`. If any edit fails to match (or is ambiguous), nothing is written and the failing edit index is reported. Edits apply against the running result, so a later edit can target text an earlier one produced. |
+| `b4a_create_module` | Creates a new `.bas` module (`class` / `code` / `activity` / `service`) with the correct header and boilerplate, and optionally registers it in a `.b4a` project (bumps `NumberOfModules` + adds a `Module` entry, with a `.bak` backup). |
 
 ### Manifest
 
@@ -92,7 +108,20 @@ Enables visual UI verification and device control without leaving Claude Code. R
 | Tool | Description |
 |------|-------------|
 | `b4a_get_logcat` | Returns logcat output filtered by the B4A tag. Shows `[showing last N of M lines]` prefix when output is truncated. |
+| `b4a_tail_log` | **Follows** logcat for a fixed number of seconds and returns the B4A lines captured during that window — call it right before reproducing a crash to watch it happen live (vs `b4a_get_logcat`, which dumps the existing buffer). |
+| `b4a_get_last_crash` | Extracts the most recent crash: the last `AndroidRuntime` FATAL EXCEPTION block and/or the B4A `Error occurred on line: N (module)` entry. Returns the failing module + line plus the stack trace. |
 | `b4a_list_devices` | Lists connected ADB devices |
+| `b4a_uninstall` | Uninstalls an app by package name |
+| `b4a_clear_data` | Clears an app's data and cache (`pm clear`) for a clean-slate test |
+| `b4a_stop_app` | Force-stops a running app (`am force-stop`) |
+| `b4a_grant_permission` | Grants a runtime permission (`pm grant`), e.g. `android.permission.CAMERA` |
+
+### Environment
+
+| Tool | Description |
+|------|-------------|
+| `b4a_doctor` | Environment health check: verifies the B4A install (`B4A.exe` + `B4ABuilder.exe`), additional libraries folder, ADB, Java, signing keystore, and connected devices. Each check reports `ok`/`warn`/`fail` with a remediation hint. Run it first when builds or device tools misbehave. |
+| `b4a_open_ide` | Opens a `.b4a` project in the B4A IDE (`B4A.exe`), launched detached. |
 
 ---
 
@@ -225,6 +254,14 @@ dotnet run
 
 The server communicates via **stdio** (MCP standard). It does not open any network ports.
 
+### Tests
+
+```powershell
+dotnet test
+```
+
+`B4aMcp.Tests` (xUnit) covers the `BalConverter` binary↔JSON roundtrip (lossless), `B4aParser` project parsing, the `BasAnalyzer` outline, and the `b4a_lint` checks.
+
 ### Project Structure
 
 ```
@@ -234,20 +271,24 @@ B4aMcp/
 │   ├── B4aProject.vb       # Project metadata model
 │   └── McpConfig.vb        # Configuration model
 ├── Tools/
-│   ├── AdbTools.vb          # logcat, devices, install APK
+│   ├── AdbTools.vb          # logcat, tail log, last crash, devices, install APK
 │   ├── BuildTools.vb        # compile, build+install combo, build log, signing info
+│   ├── CodeTools.vb         # outline + cross-module symbol search
 │   ├── ConfigTools.vb       # get/set configuration
 │   ├── DeviceTools.vb       # screenshot, tap, swipe, launch app, pixel scan, key event, input text
+│   ├── EnvTools.vb          # environment doctor + open project in IDE
 │   ├── LayoutTools.vb       # read/write/list layouts + EditText validation
 │   ├── LibraryTools.vb      # list, docs, search libraries
-│   ├── BasTools.vb           # read/edit .bas source modules
+│   ├── BasTools.vb           # read/edit/multi-edit .bas modules + create module
 │   ├── ManifestTools.vb     # read/write manifest block
 │   ├── ProjectTools.vb      # project metadata, file listing, context
 │   └── SpriteTools.vb       # sprite PNG cleanup: edge artifact removal + auto-crop
 └── Utils/
+    ├── AdbRunner.vb          # Shared adb locator + process invocation helpers
     ├── AppConfig.vb          # Config management + B4A IDE auto-detection
     ├── B4aParser.vb          # .b4a project file parser
     ├── BalConverter.vb        # Binary .bal/.bil ↔ JSON converter
+    ├── BasAnalyzer.vb        # B4X structural parser (subs, types, regions, globals)
     └── CacheManager.vb       # Mtime-based + TTL caching
 ```
 

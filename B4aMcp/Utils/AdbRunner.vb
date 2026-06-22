@@ -91,6 +91,31 @@ Namespace Utils
             End Using
         End Function
 
+        ''' <summary>
+        ''' Runs a (typically non-terminating) adb command such as 'logcat' for a fixed duration,
+        ''' captures stdout, then kills the process. Returns the captured text, or Nothing if adb is missing.
+        ''' </summary>
+        Public Shared Async Function RunTextFor(arguments As String, durationMs As Integer) As Task(Of String)
+            Dim adbPath = FindAdb()
+            If adbPath Is Nothing Then Return Nothing
+
+            Dim output As New System.Text.StringBuilder()
+            Using proc As New Process() With {.StartInfo = NewPsi(adbPath, arguments)}
+                AddHandler proc.OutputDataReceived, Sub(s, e) If e.Data IsNot Nothing Then output.AppendLine(e.Data)
+                AddHandler proc.ErrorDataReceived, Sub(s, e) If e.Data IsNot Nothing Then output.AppendLine(e.Data)
+                proc.Start()
+                proc.BeginOutputReadLine()
+                proc.BeginErrorReadLine()
+                Await Task.Delay(durationMs)
+                Try
+                    If Not proc.HasExited Then proc.Kill(entireProcessTree:=True)
+                Catch
+                    ' process may have exited between the check and the kill — ignore
+                End Try
+            End Using
+            Return output.ToString().Trim()
+        End Function
+
         Private Shared Function NewPsi(adbPath As String, arguments As String) As ProcessStartInfo
             Return New ProcessStartInfo() With {
                 .FileName = adbPath,

@@ -221,6 +221,75 @@ Namespace Tools
             End Try
         End Function
 
+        <McpServerTool, Description(
+            "Cross-checks the libraries a .b4a project references against the libraries installed in b4aPath/Libraries " &
+            "and the additional libraries folder. Reports which referenced libraries are MISSING (which would fail the build) " &
+            "and which are found (with version). Run before building to catch missing dependencies early.")>
+        Public Shared Function B4aCheckLibraries(
+            <Description("Full path to the .b4a project file")> projectPath As String
+        ) As String
+            If Not File.Exists(projectPath) Then Return $"Error: File not found: {projectPath}"
+            If Not projectPath.EndsWith(".b4a", StringComparison.OrdinalIgnoreCase) Then Return "Error: File must have .b4a extension"
+
+            Try
+                Dim proj = B4aParser.Parse(projectPath)
+
+                ' Build a map of installed libraries: logical name (from XML <name> or filename) -> version.
+                Dim cfg = AppConfig.Load()
+                Dim dirs As New List(Of String)()
+                If Not String.IsNullOrEmpty(cfg.B4aPath) Then
+                    Dim libDir = Path.Combine(cfg.B4aPath, "Libraries")
+                    If Directory.Exists(libDir) Then dirs.Add(libDir)
+                End If
+                If Not String.IsNullOrEmpty(cfg.AdditionalLibrariesPath) AndAlso Directory.Exists(cfg.AdditionalLibrariesPath) Then
+                    dirs.Add(cfg.AdditionalLibrariesPath)
+                End If
+
+                Dim installed As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+                For Each searchDir In dirs
+                    For Each xmlFile In Directory.GetFiles(searchDir, "*.xml")
+                        If Not File.Exists(Path.ChangeExtension(xmlFile, ".jar")) Then Continue For
+                        Dim fileBase = Path.GetFileNameWithoutExtension(xmlFile)
+                        Dim ver = "?"
+                        Dim xmlName = fileBase
+                        Try
+                            Dim doc = XDocument.Load(xmlFile)
+                            Dim nameEl = doc.Root.Element("name")
+                            Dim verEl = doc.Root.Element("version")
+                            If nameEl IsNot Nothing Then xmlName = nameEl.Value
+                            If verEl IsNot Nothing Then ver = verEl.Value
+                        Catch
+                        End Try
+                        If Not installed.ContainsKey(fileBase) Then installed(fileBase) = ver
+                        If Not installed.ContainsKey(xmlName) Then installed(xmlName) = ver
+                    Next
+                Next
+
+                Dim missing As New List(Of String)
+                Dim found As New List(Of Object)
+                For Each libName In proj.Libraries
+                    Dim ver As String = Nothing
+                    If installed.TryGetValue(libName, ver) Then
+                        found.Add(New With {.name = libName, .version = ver})
+                    Else
+                        missing.Add(libName)
+                    End If
+                Next
+
+                Return JsonConvert.SerializeObject(New With {
+                    .project = Path.GetFileName(projectPath),
+                    .referenced = proj.Libraries.Count,
+                    .installedScanned = dirs,
+                    .missingCount = missing.Count,
+                    .missing = missing,
+                    .found = found,
+                    .note = If(missing.Count > 0, "Missing libraries will fail the build. Some core/internal libraries may be bundled and not appear here.", "All referenced libraries resolved.")
+                }, Formatting.Indented)
+            Catch ex As Exception
+                Return $"Error: {ex.Message}"
+            End Try
+        End Function
+
         ' ── Helpers ──────────────────────────────────────────────────────────────
 
         Private Shared Function FindLibraryXml(name As String) As String

@@ -33,9 +33,10 @@ Namespace Utils
                 If header.ContainsKey($"Library{i}") Then proj.Libraries.Add(header($"Library{i}"))
             Next
 
-            ' Extract modules (source files)
+            ' Extract modules (source files). The count key is NumberOfModules; NumberOfFiles
+            ' counts bundled assets (File1, File2, …), not code modules.
             Dim modCount As Integer
-            If header.ContainsKey("NumberOfFiles") Then Integer.TryParse(header("NumberOfFiles"), modCount)
+            If header.ContainsKey("NumberOfModules") Then Integer.TryParse(header("NumberOfModules"), modCount)
             For i = 1 To modCount
                 If header.ContainsKey($"Module{i}") Then proj.Modules.Add(header($"Module{i}"))
             Next

@@ -1,0 +1,22 @@
+Build1=Default,b4a.test
+File1=splash.png
+Group=Default Group
+Library1=core
+Library2=json
+NumberOfFiles=1
+NumberOfLibraries=2
+NumberOfModules=2
+Module1=|relative|src\Helper
+Module2=Main
+@EndOfDesignText@
+#Region Project Attributes
+	#ApplicationLabel: Test App
+	#VersionCode: 3
+	#VersionName: 1.2.0
+	#Package: b4a.test
+#End Region
+#Region  Manifest Editor
+AddManifestText(<uses-permission android:name="android.permission.INTERNET"/>)
+#End Region
+Sub Process_Globals
+End Sub
