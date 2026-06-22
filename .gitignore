@@ -1,4 +1,19 @@
-CLAUDE.md
-B4aMcp/obj/Debug/net8.0/win-x64/B4aMcp.sourcelink.json
-B4aMcp/obj/Debug/net8.0/win-x64/B4aMcp.vbproj.FileListAbsolute.txt
-B4aMcp/obj/Release/net8.0/win-x64/B4aMcp.sourcelink.json
+# Build output
+**/bin/
+**/obj/
+
+# Rider / Visual Studio
+.idea/
+.vs/
+*.user
+*.suo
+
+# Backups created by the MCP tools (.bak) and editors
+*.bak
+
+# OS noise
+Thumbs.db
+.DS_Store
+
+# Local VS Code workspace state (keep settings.json if you want it shared)
+# .vscode/

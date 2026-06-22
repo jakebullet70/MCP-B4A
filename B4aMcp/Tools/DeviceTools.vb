@@ -1,6 +1,5 @@
 Imports ModelContextProtocol.Server
 Imports System.ComponentModel
-Imports System.Diagnostics
 Imports System.Drawing
 Imports System.Drawing.Imaging
 Imports System.IO
@@ -41,8 +40,7 @@ Namespace Tools
             Try
                 If delayMs > 0 Then Await Task.Delay(delayMs)
 
-                Dim adbPath = FindAdb()
-                If adbPath Is Nothing Then Return "Error: adb not found. Check adbPath in config."
+                If AdbRunner.FindAdb() Is Nothing Then Return "Error: adb not found. Check adbPath in config."
 
                 If String.IsNullOrEmpty(outputPath) Then
                     outputPath = Path.Combine("C:\temp", "b4a_ss.png")
@@ -50,34 +48,11 @@ Namespace Tools
                 Dim outDir = Path.GetDirectoryName(outputPath)
                 If Not String.IsNullOrEmpty(outDir) Then Directory.CreateDirectory(outDir)
 
-                Dim deviceArg = If(Not String.IsNullOrEmpty(deviceSerial), $"-s {deviceSerial} ", "")
-
-                Dim psi As New ProcessStartInfo() With {
-                    .FileName = adbPath,
-                    .Arguments = $"{deviceArg}exec-out screencap -p",
-                    .RedirectStandardOutput = True,
-                    .RedirectStandardError = True,
-                    .UseShellExecute = False,
-                    .CreateNoWindow = True
-                }
-
                 ' Read raw PNG bytes from binary stdout
-                Dim pngBytes As Byte()
-                Using proc As New Process() With {.StartInfo = psi}
-                    proc.Start()
-                    Dim ms As New MemoryStream()
-                    Dim buf(65535) As Byte
-                    Dim bytesRead As Integer
-                    Do
-                        bytesRead = Await proc.StandardOutput.BaseStream.ReadAsync(buf, 0, buf.Length)
-                        If bytesRead > 0 Then ms.Write(buf, 0, bytesRead)
-                    Loop While bytesRead > 0
-                    Await Task.Run(Sub() proc.WaitForExit(15_000))
-                    pngBytes = ms.ToArray()
-                End Using
+                Dim pngBytes = Await AdbRunner.RunBinary($"{AdbRunner.DeviceArg(deviceSerial)}exec-out screencap -p", 15_000)
 
-                If pngBytes.Length < 100 Then
-                    Return $"Error: Screenshot returned only {pngBytes.Length} bytes — device may not be connected or screen may be off."
+                If pngBytes Is Nothing OrElse pngBytes.Length < 100 Then
+                    Return $"Error: Screenshot returned only {If(pngBytes Is Nothing, 0, pngBytes.Length)} bytes — device may not be connected or screen may be off."
                 End If
 
                 ' Load to get dimensions (and optionally crop)
@@ -277,52 +252,12 @@ Namespace Tools
 
         Private Shared Async Function RunAdbShell(shellCmd As String, deviceSerial As String, successMsg As String) As Task(Of String)
             Try
-                Dim adbPath = FindAdb()
-                If adbPath Is Nothing Then Return "Error: adb not found."
-
-                Dim deviceArg = If(Not String.IsNullOrEmpty(deviceSerial), $"-s {deviceSerial} ", "")
-                Dim psi As New ProcessStartInfo() With {
-                    .FileName = adbPath,
-                    .Arguments = $"{deviceArg}shell {shellCmd}",
-                    .RedirectStandardOutput = True,
-                    .RedirectStandardError = True,
-                    .UseShellExecute = False,
-                    .CreateNoWindow = True
-                }
-
-                Dim output As New System.Text.StringBuilder()
-                Using proc As New Process() With {.StartInfo = psi}
-                    AddHandler proc.OutputDataReceived, Sub(s, e) If e.Data IsNot Nothing Then output.AppendLine(e.Data)
-                    AddHandler proc.ErrorDataReceived, Sub(s, e) If e.Data IsNot Nothing Then output.AppendLine("[err] " & e.Data)
-                    proc.Start()
-                    proc.BeginOutputReadLine()
-                    proc.BeginErrorReadLine()
-                    Await Task.Run(Sub() proc.WaitForExit(10_000))
-                End Using
-
-                Dim out = output.ToString().Trim()
+                Dim out = Await AdbRunner.RunText($"{AdbRunner.DeviceArg(deviceSerial)}shell {shellCmd}", 10_000)
+                If out Is Nothing Then Return "Error: adb not found."
                 Return If(String.IsNullOrEmpty(out), successMsg, out)
             Catch ex As Exception
                 Return $"Error: {ex.Message}"
             End Try
-        End Function
-
-        Private Shared Function FindAdb() As String
-            Dim cfg = AppConfig.Load()
-            If Not String.IsNullOrEmpty(cfg.AdbPath) Then
-                If File.Exists(cfg.AdbPath) Then Return cfg.AdbPath
-                Dim adbExe = Path.Combine(cfg.AdbPath, "adb.exe")
-                If File.Exists(adbExe) Then Return adbExe
-            End If
-            Dim pathEnv = If(Environment.GetEnvironmentVariable("PATH"), "")
-            For Each pathDir In pathEnv.Split(";"c)
-                Dim candidate = Path.Combine(pathDir.Trim(), "adb.exe")
-                If File.Exists(candidate) Then Return candidate
-            Next
-            Dim localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            Dim sdkPath = Path.Combine(localAppData, "Android", "Sdk", "platform-tools", "adb.exe")
-            If File.Exists(sdkPath) Then Return sdkPath
-            Return Nothing
         End Function
 
     End Class
