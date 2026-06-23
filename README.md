@@ -1,5 +1,9 @@
-![mcp-b4a](https://github.com/user-attachments/assets/115aa63b-3a12-4408-8ae1-479290cfca2f)
+This fork is ahead of the original project.  
 
+![mcp-b4a](https://github.com/user-attachments/assets/115aa63b-3a12-4408-8ae1-479290cfca2f)
+  
+This fork is ahead of the original project.
+  
 
 # MCP Server for B4A
 
